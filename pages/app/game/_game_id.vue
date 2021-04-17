@@ -2,9 +2,32 @@
     <div>
         {{ game_id }}
         <h1>Players {{ players }}</h1>
-        <button @click="ping">ping</button>
-        <button @click="leave">Leave</button>
-        <button @click="start">Start</button>
+        <div v-if="!game.started">
+            <button @click="ping">ping</button>
+            <button @click="leave">Leave</button>
+            <button @click="start">Start</button>
+        </div>
+
+        <div v-else>
+            <h1>Balance: {{ game.balance }}</h1>
+            <h1>Pos: {{ currentPosition() }}</h1>
+            <h1>Board</h1>
+
+            <div v-if="game.turn">
+                <h1>Turn: {{ game.turn }}</h1>
+                <div v-if="game.turn == user_id">
+                    <h1>Your turn</h1>
+                    <div v-if="game.roll">
+                        <h1>Dice 1: {{ game.roll["dice1"] }}</h1>
+                        <h1>Dice 2: {{ game.roll["dice2"] }}</h1>
+                    </div> 
+                    <button v-if="!game.hasRolled" @click="rollDice">Roll dice</button>
+                    <button @click="finishTurn">Finish turn</button>
+                </div>
+                
+            </div>
+        </div>
+
     </div>
 </template>
 
@@ -23,7 +46,15 @@ export default {
             game_id: this.game_id,
             players: 0,
             connected: false,
-            user_id: null
+            user_id: null,
+            game: {
+                started: false,
+                hasRolled: false,
+                balance: null,
+                roll: null,
+                turn: null,
+                positions: {},
+            }
         }
     },
     async created(){
@@ -58,9 +89,6 @@ export default {
             this.players += 1;
         });
 
-        this.socket.on("game-start", () => {
-            console.log("Game starting");
-        });
 
         this.socket.on('player-left', () =>{
             console.log("player left")
@@ -72,6 +100,39 @@ export default {
                 this.$router.push("/app/")
             }
         }, 5000)
+
+        this.socket.on("game-start", (info) => {
+            let [ bal, pos ] = info.split(".").map(Number)
+            this.game.balance = bal;
+            this.game.positions[this.user_id] = pos;
+            this.game.started = true 
+            console.log("Game starting");
+            this.socket.on("change-turn", (user_id) => {
+                console.log(`Turn of ${user_id}`)
+                this.game.turn = user_id;
+                this.game.hasRolled = false;
+                this.game.roll = null
+            });
+
+            this.socket.on("game-over", () => {
+                this.$router.push("/app/")
+            });
+
+            this.socket.on("dice-roll", (info) => {
+                console.log(`Dice rolled ${info}`)
+                let [ dice1, dice2, pos ] = info.split(".").map(Number)
+                if(this.game.turn == this.user_id){
+                    if (dice1 != dice2) this.game.hasRolled = true
+                    this.game.roll = {
+                        "dice1": dice1,
+                        "dice2": dice2
+                    }  
+                }
+                this.game.positions[this.game.turn] = pos;
+
+
+            })
+        });
     },
     methods:{
         ping(){
@@ -81,6 +142,7 @@ export default {
         leave(){
             if(this.connected){
                 this.socket.emit('leave-game', JSON.stringify({"game_id": this.game_id,"user_id": this.user_id}))
+                this.socket.destroy();
             }
             this.$router.push("/app/")
         },
@@ -93,6 +155,15 @@ export default {
         },
         start() {
             this.socket.emit("start-game", this.game_id)
+        },
+        finishTurn(){
+            this.socket.emit('end-turn', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+        },
+        rollDice(){
+            this.socket.emit('roll-dice', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+        },
+        currentPosition(){
+            return this.game.positions[this.user_id]
         }
     }
 
