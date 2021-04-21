@@ -9,7 +9,7 @@
         </div>
 
         <div v-else>
-            <h1>Balance: {{ game.balance }}</h1>
+            <h1>Balance: {{ currentBalance() }}</h1>
             <h1>Pos: {{ currentPosition() }}</h1>
             <h1>Board</h1>
 
@@ -25,6 +25,12 @@
                     <button @click="finishTurn">Finish turn</button>
                 </div>
                 
+            </div>
+
+            <div v-for="notification in game.notifications" :key="notification.id">
+                <div class="alert" :class="notification.type">
+                    <h1>{{ notification.text }}</h1>
+                </div>
             </div>
         </div>
 
@@ -50,25 +56,17 @@ export default {
             game: {
                 started: false,
                 hasRolled: false,
-                balance: null,
                 roll: null,
                 turn: null,
-                positions: {},
+                data: {},
+                notifications: [],
             }
         }
     },
     async created(){
         await this.VerifyRoom();
         window.onbeforeunload = (e) => {
-            if(!e) e = window.event;
-            e.cancelBubble = true;
-            e.returnValue = 'You sure you want to leave?'; 
-
-            if (e.stopPropagation) {
-                this.leave();
-                e.stopPropagation();
-                e.preventDefault();
-            }
+            this.leave()
         }
         console.log("emmiting join room")
 
@@ -103,8 +101,11 @@ export default {
 
         this.socket.on("game-start", (info) => {
             let [ bal, pos ] = info.split(".").map(Number)
-            this.game.balance = bal;
-            this.game.positions[this.user_id] = pos;
+            this.game.data[this.user_id] = {
+                bal: bal,
+                pos: pos,
+                cards: []
+            }
             this.game.started = true 
             console.log("Game starting");
             this.socket.on("change-turn", (user_id) => {
@@ -115,7 +116,7 @@ export default {
             });
 
             this.socket.on("game-over", () => {
-                this.$router.push("/app/")
+                this.leave()
             });
 
             this.socket.on("dice-roll", (info) => {
@@ -128,10 +129,63 @@ export default {
                         "dice2": dice2
                     }  
                 }
-                this.game.positions[this.game.turn] = pos;
-
-
+                this.game.data[this.game.turn] = {...this.game.data[this.game.turn], pos: pos}
             })
+
+            this.socket.on("buy-request", (info) => {
+                console.log(`Buy request ${info}`)
+                let json = JSON.parse(info);
+                if(this.game.turn == this.user_id){
+                    // see if you want to bui
+                    var res = confirm(`Buy property ${json["name"]} for ${json["price"]}`)
+                    if (res) {
+                        this.socket.emit("request-buy", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+                    }
+                }
+            });
+
+            this.socket.on("passed-go", (info) => {
+                console.log(`Passed go ${info}`)
+                let [ user_id, bal ] = info.split(".");
+
+                this.game.data[user_id] = {...this.game.data[user_id], bal:Number(bal)}
+                if(user_id == this.user_id){
+                    this.addNoti("You got $200 for passing go!", 'success')
+                }
+
+                this.$forceUpdate();
+            });
+            
+            this.socket.on("property-bought", (info) => {
+                console.log(`Property bought ${info}`)
+                let [ user_id, bal ] = info.split(".");
+
+                this.game.data[user_id] = {...this.game.data[user_id], bal:Number(bal)}
+     
+                if(user_id == this.user_id){
+                    this.addNoti("You have bought the property", "success");
+                    this.$forceUpdate();
+                }
+            });
+
+            this.socket.on("payed-rent", (info) => {
+                console.log(`Payed rent ${info}`)
+                let [ user_id, user_id2, bal, bal2] = info.split(".")
+
+                if(user_id == this.user_id){
+                    this.addNoti(`You payed ${this.game.data[this.user_id].bal - Number(bal)} rent`, "danger");
+                }else if(user_id2 == this.user_id){
+                    this.addNoti(`You got ${Number(bal2) - this.game.data[this.user_id].bal} from rent`, 'info');
+                }
+
+                this.game.data[user_id] = {...this.game.data[user_id], bal:Number(bal)}
+                this.game.data[user_id2] = {...this.game.data[user_id], bal:Number(bal2)}
+
+                if(user_id == this.user_id || user_id2 == this.user_id){
+                    this.$forceUpdate()
+                }
+
+            });
         });
     },
     methods:{
@@ -163,10 +217,51 @@ export default {
             this.socket.emit('roll-dice', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
         },
         currentPosition(){
-            return this.game.positions[this.user_id]
+            return this.game.data[this.user_id].pos 
+        },
+        currentBalance(){
+            return this.game.data[this.user_id].bal
+        },
+        addNoti(text, type){
+            let id = Array(17).join((Math.random().toString(36)+'00000000000000000').slice(2, 18)).slice(0, 16)
+            this.game.notifications.push({text,type,id})
+            setTimeout(() => {
+                this.game.notifications = this.game.notifications.filter(item => item.id != id)
+            }, 5000)
         }
     }
 
 
 }
 </script>
+
+<style scoped>
+.alert {
+  padding: 20px;
+  background-color: #f44336;
+  color: white;
+  opacity: 1;
+  transition: opacity 0.6s;
+  margin-bottom: 15px;
+}
+
+.alert.success {background-color: #4CAF50;}
+.alert.info {background-color: #2196F3;}
+.alert.warning {background-color: #ff9800;}
+
+.closebtn {
+  margin-left: 15px;
+  color: white;
+  font-weight: bold;
+  float: right;
+  font-size: 22px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.closebtn:hover {
+  color: black;
+}
+
+</style>
