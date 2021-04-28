@@ -11,7 +11,6 @@
         <div v-else>
             <h1>Balance: {{ currentBalance() }}</h1>
             <h1>Pos: {{ currentPosition() }}</h1>
-            <h1>Board</h1>
 
             <div v-if="game.turn">
                 <h1>Turn: {{ game.turn }}</h1>
@@ -32,6 +31,26 @@
                     <h1>{{ notification.text }}</h1>
                 </div>
             </div>
+
+            <table id="board" style="display: table;">
+                <tbody>
+                    <tr>
+                        <td v-for="i in 11" class="border-2 cell" :key="i">text</td>
+                    </tr>
+
+                    <tr v-for="n in 9" :key="n">
+
+                        <td class="cell" style="border: 1px solid black;">Text</td>
+                        <td colspan="9"></td>
+                        <td class="cell" style="border: 1px solid black;">Text</td>
+
+                    </tr>
+
+                    <tr>
+                        <td  v-for="i in 11" class="border-2 cell" :key="i">text</td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
 
     </div>
@@ -262,6 +281,11 @@ export default {
 
 .closebtn:hover {
   color: black;
+}
+
+.cell{
+    width: 50px;
+    height: 50px;
 }
 
 </style>
