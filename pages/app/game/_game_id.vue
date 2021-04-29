@@ -35,19 +35,35 @@
             <table id="board" style="display: table;">
                 <tbody>
                     <tr>
-                        <td v-for="i in 11" class="border-2 cell" :key="i">text</td>
+                        <td v-for="i in 11" class="border-2 cell" :key="i">
+                            <div v-for="user in getUsers(i + 19)" :key="user.Color">
+                                {{ user.Username }}
+                            </div> 
+                        </td>
                     </tr>
 
                     <tr v-for="n in 9" :key="n">
 
-                        <td class="cell" style="border: 1px solid black;">Text</td>
+                        <td class="cell" style="border: 1px solid black;">
+                            <div v-for="user in getUsers((10 - n) + 10)" :key="user.Color">
+                                {{ user.Username }}
+                            </div> 
+                        </td>
                         <td colspan="9"></td>
-                        <td class="cell" style="border: 1px solid black;">Text</td>
+                        <td class="cell" style="border: 1px solid black;">
+                            <div v-for="user in getUsers(n + 30)" :key="user.Color">
+                                {{ user.Username }}
+                            </div> 
+                        </td>
 
                     </tr>
 
                     <tr>
-                        <td  v-for="i in 11" class="border-2 cell" :key="i">text</td>
+                        <td  v-for="i in 11" class="border-2 cell" :key="i">
+                            <div v-for="user in getUsers(10 - (i - 1))" :key="user.Color">
+                                {{ user.Username }}
+                            </div> 
+                        </td>
                     </tr>
                 </tbody>
             </table>
@@ -119,13 +135,11 @@ export default {
         }, 5000)
 
         this.socket.on("game-start", (info) => {
-            let [ bal, pos ] = info.split(".").map(Number)
-            this.game.data[this.user_id] = {
-                bal: bal,
-                pos: pos,
-                cards: []
-            }
-            this.game.started = true 
+            let jsonRes = JSON.parse(info)
+            console.log(jsonRes)
+            this.game.data = jsonRes;
+            this.game.started = true;
+            this.players = Object.keys(jsonRes).length
             console.log("Game starting");
             this.socket.on("change-turn", (user_id) => {
                 console.log(`Turn of ${user_id}`)
@@ -148,7 +162,7 @@ export default {
                         "dice2": dice2
                     }  
                 }
-                this.game.data[this.game.turn] = {...this.game.data[this.game.turn], pos: pos}
+                this.game.data[this.game.turn] = {...this.game.data[this.game.turn], Pos: pos}
             })
 
             this.socket.on("buy-request", (info) => {
@@ -167,7 +181,7 @@ export default {
                 console.log(`Passed go ${info}`)
                 let [ user_id, bal ] = info.split(".");
 
-                this.game.data[user_id] = {...this.game.data[user_id], bal:Number(bal)}
+                this.game.data[user_id] = {...this.game.data[user_id], Balance :Number(bal)}
                 if(user_id == this.user_id){
                     this.addNoti("You got $200 for passing go!", 'success')
                 }
@@ -179,7 +193,7 @@ export default {
                 console.log(`Property bought ${info}`)
                 let [ user_id, bal ] = info.split(".");
 
-                this.game.data[user_id] = {...this.game.data[user_id], bal:Number(bal)}
+                this.game.data[user_id] = {...this.game.data[user_id], Balance:Number(bal)}
      
                 if(user_id == this.user_id){
                     this.addNoti("You have bought the property", "success");
@@ -192,13 +206,13 @@ export default {
                 let [ user_id, user_id2, bal, bal2] = info.split(".")
 
                 if(user_id == this.user_id){
-                    this.addNoti(`You payed ${this.game.data[this.user_id].bal - Number(bal)} rent`, "danger");
+                    this.addNoti(`You payed ${this.game.data[this.user_id].Balance - Number(bal)} rent`, "danger");
                 }else if(user_id2 == this.user_id){
-                    this.addNoti(`You got ${Number(bal2) - this.game.data[this.user_id].bal} from rent`, 'info');
+                    this.addNoti(`You got ${Number(bal2) - this.game.data[this.user_id].Balance} from rent`, 'info');
                 }
 
-                this.game.data[user_id] = {...this.game.data[user_id], bal:Number(bal)}
-                this.game.data[user_id2] = {...this.game.data[user_id], bal:Number(bal2)}
+                this.game.data[user_id] = {...this.game.data[user_id], Balance:Number(bal)}
+                this.game.data[user_id2] = {...this.game.data[user_id2], Balance:Number(bal2)}
 
                 if(user_id == this.user_id || user_id2 == this.user_id){
                     this.$forceUpdate()
@@ -236,10 +250,10 @@ export default {
             this.socket.emit('roll-dice', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
         },
         currentPosition(){
-            return this.game.data[this.user_id].pos 
+            return this.game.data[this.user_id].Pos 
         },
         currentBalance(){
-            return this.game.data[this.user_id].bal
+            return this.game.data[this.user_id].Balance
         },
         addNoti(text, type){
             let id = Array(17).join((Math.random().toString(36)+'00000000000000000').slice(2, 18)).slice(0, 16)
@@ -247,6 +261,18 @@ export default {
             setTimeout(() => {
                 this.game.notifications = this.game.notifications.filter(item => item.id != id)
             }, 5000)
+        },
+        getUsers(idx){
+           
+            if(idx >= 40){
+                idx -= 40;
+            }
+            let users = []
+            let ids = Object.keys(this.game.data)
+            for(let i = 0; i < ids.length; i++){
+                if(this.game.data[ids[i]].Pos == idx)users.push(this.game.data[ids[i]]);
+            }
+            return users
         }
     }
 
