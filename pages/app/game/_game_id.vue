@@ -110,6 +110,8 @@ export default {
         })
         let user_id = (await this.$axios.get("http://localhost:3333/user/cur")).data
         this.user_id = user_id
+
+        
         this.socket.emit('join-game', JSON.stringify({"game_id": this.game_id, "user_id": user_id}))
         this.socket.on('joined-game', (message) => {
             console.log(message)
@@ -127,13 +129,14 @@ export default {
             console.log("player left")
             this.players -= 1;
         })
+        
 
         setTimeout(() => {
             if(!this.connected){
                 this.$router.push("/app/")
             }
         }, 5000)
-
+        
         this.socket.on("game-start", (info) => {
             let jsonRes = JSON.parse(info)
             console.log(jsonRes)
@@ -208,7 +211,7 @@ export default {
                 if(user_id == this.user_id){
                     this.addNoti(`You payed ${this.game.data[this.user_id].Balance - Number(bal)} rent`, "danger");
                 }else if(user_id2 == this.user_id){
-                    this.addNoti(`You got ${Number(bal2) - this.game.data[this.user_id].Balance} from rent`, 'info');
+                    this.addNoti(`You got ${Number(bal2) - this.game.data[user_id2].Balance} from rent`, 'info');
                 }
 
                 this.game.data[user_id] = {...this.game.data[user_id], Balance:Number(bal)}
@@ -219,7 +222,28 @@ export default {
                 }
 
             });
+
+            this.socket.on("special", (info) => {
+                console.log(`Special ${info}`)
+                let result = JSON.parse(info)
+
+                if(result["Action"] == "change"){
+                    this.game.data[result["User"]] = {...this.game.data[result["User"]], Balance: Number(result["Balance"])}
+                }else if(result["Action"] == "move"){
+                    this.game.data[result["User"]] = {...this.game.data[result["User"]], Pos: Number(result["Pos"])}
+                }
+                if(result["User"] == this.user_id){
+                    this.addNoti(result["Info"], "info")
+                    this.$forceUpdate();
+                }
+            })
+
+            this.socket.on("bankrupt", (info) => {
+                console.log(`${info} went bankrupt`)
+                if(info == this.user_id) this.leave();
+            })
         });
+        
     },
     methods:{
         ping(){
@@ -263,7 +287,6 @@ export default {
             }, 5000)
         },
         getUsers(idx){
-           
             if(idx >= 40){
                 idx -= 40;
             }
@@ -310,8 +333,8 @@ export default {
 }
 
 .cell{
-    width: 50px;
-    height: 50px;
+    width: 75px;
+    height: 75px;
 }
 
 </style>
