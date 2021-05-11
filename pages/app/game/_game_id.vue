@@ -2,6 +2,7 @@
     <div>
         {{ game_id }}
         <h1>Players {{ players }}</h1>
+        <button @click="speak = !speak">Speak: {{ speak }}</button>
         <div v-if="!game.started">
             <button @click="ping">ping</button>
             <button @click="leave">Leave</button>
@@ -75,7 +76,7 @@
             </div>
         </div>
 
-
+        <div class="alan-btn"></div>
     </div>
 </template>
 
@@ -95,6 +96,7 @@ export default {
             players: 0,
             connected: false,
             user_id: null,
+            speak: false,
             game: {
                 started: false,
                 hasRolled: false,
@@ -107,7 +109,9 @@ export default {
         }
     },
     async created(){
+
         await this.VerifyRoom();
+
         window.onbeforeunload = (e) => {
             this.leave()
         }
@@ -145,6 +149,31 @@ export default {
             }
         }, 5000)
         
+        // alan ai stuff
+        // have to add reference to functions before using because of scope issues
+        let startGame = this.start;
+        let rollDice = this.rollDice;
+        let leaveGame = this.leave;
+        let finishTurn = this.finishTurn;
+        let buyProperty = this.buyProperty;
+        this.alanBtnInstance = alanBtn({
+            key: "",
+            onCommand: function (commandData) {
+                if (commandData.command === "start") {
+                    startGame();
+                }else if(commandData.command === "leave") {
+                    leaveGame();
+                }else if(commandData.command === "roll-dice") {
+                    rollDice();
+                }else if(commandData.command === "finish-turn") {
+                    finishTurn();
+                }else if(commandData.command === "buy-property") {
+                    buyProperty();
+                }
+            },
+            rootEl: document.getElementById("alan-btn"),
+        });
+
         this.socket.on("game-start", (info) => {
             let jsonRes = JSON.parse(info)
             console.log(jsonRes)
@@ -170,6 +199,7 @@ export default {
                 let [ dice1, dice2, pos ] = info.split(".").map(Number)
                 if(this.game.turn == this.user_id){
                     if (dice1 != dice2) this.game.hasRolled = true
+                    this.speakMessage("general", `You have rolled a ${dice1 + dice2}`)
                     this.game.roll = {
                         "dice1": dice1,
                         "dice2": dice2
@@ -208,6 +238,7 @@ export default {
                 this.game.data[user_id]["Properties"] = [...this.game.data[user_id]["Properties"], Name]
                 if(user_id == this.user_id){
                     this.addNoti("You have bought the property", "success");
+                    this.speakMessage("general", `You have bought the property`)
                     this.$forceUpdate();
                 }
             });
@@ -218,8 +249,10 @@ export default {
 
                 if(user_id == this.user_id){
                     this.addNoti(`You payed ${this.game.data[this.user_id].Balance - Number(bal)} rent`, "danger");
+                     this.speakMessage("general", `You payed ${this.game.data[this.user_id].Balance - Number(bal)} rent`)
                 }else if(user_id2 == this.user_id){
                     this.addNoti(`You got ${Number(bal2) - this.game.data[user_id2].Balance} from rent`, 'info');
+                    this.speakMessage("general", `You got ${Number(bal2) - this.game.data[user_id2].Balance} from rent`)
                 }
 
                 this.game.data[user_id] = {...this.game.data[user_id], Balance:Number(bal)}
@@ -251,6 +284,8 @@ export default {
             })
         });
         
+
+
     },
     methods:{
         ping(){
@@ -272,13 +307,17 @@ export default {
             }
         },
         start() {
-            this.socket.emit("start-game", this.game_id)
+            if(!this.game.started){
+                this.socket.emit("start-game", this.game_id)
+            }   
         },
         finishTurn(){
             this.socket.emit('end-turn', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
         },
         rollDice(){
-            this.socket.emit('roll-dice', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+            if(!this.game.hasRolled){
+                this.socket.emit('roll-dice', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+            }
         },
         currentPosition(){
             return this.game.data[this.user_id].Pos 
@@ -305,10 +344,21 @@ export default {
             return users
         },
         buyProperty(){
-            this.socket.emit("request-buy", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+            if(this.game.turn == this.user_id){
+                 this.socket.emit("request-buy", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+            } 
         },
         getProperties(){
             return this.game.data[this.user_id]["Properties"].join(", ")
+        },
+        speakMessage(name, data){
+            if(this.speak){
+                this.alanBtnInstance.callProjectApi(name, {data}, (err, result) => {
+                    if(error){
+                        console.log(error);
+                    }
+                })
+            }
         }
     }
 
