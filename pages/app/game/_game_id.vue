@@ -11,7 +11,7 @@
         <div v-else>
             <h1>Balance: {{ currentBalance() }}</h1>
             <h1>Pos: {{ currentPosition() }}</h1>
-
+            <h1>Properties {{ getProperties() }}</h1>
             <div v-if="game.turn">
                 <h1>Turn: {{ game.turn }}</h1>
                 <div v-if="game.turn == user_id">
@@ -22,17 +22,18 @@
                     </div> 
                     <button v-if="!game.hasRolled" @click="rollDice">Roll dice</button>
                     <button @click="finishTurn">Finish turn</button>
+                    <div v-if="turnInfo.buyproperty" class="center" style="z-index: 100">
+                        <h1>You have landed on {{ turnInfo["buyproperty"]["name"] }}. Would you like to buy it for {{ turnInfo["buyproperty"]["price"] }}</h1>
+                        <button @click="buyProperty">Yes</button>
+                        <button>No</button>
+                    </div> 
                 </div>
                 
             </div>
 
-            <div v-for="notification in game.notifications" :key="notification.id">
-                <div class="alert" :class="notification.type">
-                    <h1>{{ notification.text }}</h1>
-                </div>
-            </div>
 
-            <table id="board" style="display: table;">
+
+            <table id="board" style="display: table;" class="center">
                 <tbody>
                     <tr>
                         <td v-for="i in 11" class="border-2 cell" :key="i">
@@ -67,7 +68,13 @@
                     </tr>
                 </tbody>
             </table>
+            <div v-for="notification in game.notifications" :key="notification.id">
+                <div class="alert" :class="notification.type">
+                    <h1>{{ notification.text }}</h1>
+                </div>
+            </div>
         </div>
+
 
     </div>
 </template>
@@ -93,6 +100,7 @@ export default {
                 hasRolled: false,
                 roll: null,
                 turn: null,
+                turnInfo: {},
                 data: {},
                 notifications: [],
             }
@@ -149,6 +157,7 @@ export default {
                 this.game.turn = user_id;
                 this.game.hasRolled = false;
                 this.game.roll = null
+                 this.turnInfo = {};
             });
 
             this.socket.on("game-over", () => {
@@ -156,6 +165,7 @@ export default {
             });
 
             this.socket.on("dice-roll", (info) => {
+               
                 console.log(`Dice rolled ${info}`)
                 let [ dice1, dice2, pos ] = info.split(".").map(Number)
                 if(this.game.turn == this.user_id){
@@ -172,11 +182,9 @@ export default {
                 console.log(`Buy request ${info}`)
                 let json = JSON.parse(info);
                 if(this.game.turn == this.user_id){
-                    // see if you want to bui
-                    var res = confirm(`Buy property ${json["name"]} for ${json["price"]}`)
-                    if (res) {
-                        this.socket.emit("request-buy", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
-                    }
+                    // see if you want to buy
+                    this.turnInfo["buyproperty"] = json;
+                    this.$forceUpdate();
                 }
             });
 
@@ -194,10 +202,10 @@ export default {
             
             this.socket.on("property-bought", (info) => {
                 console.log(`Property bought ${info}`)
-                let [ user_id, bal ] = info.split(".");
+                let [ user_id, bal, Name ] = info.split(".");
 
-                this.game.data[user_id] = {...this.game.data[user_id], Balance:Number(bal)}
-     
+                this.game.data[user_id] = {...this.game.data[user_id], Balance: Number(bal)}
+                this.game.data[user_id]["Properties"] = [...this.game.data[user_id]["Properties"], Name]
                 if(user_id == this.user_id){
                     this.addNoti("You have bought the property", "success");
                     this.$forceUpdate();
@@ -234,7 +242,6 @@ export default {
                 }
                 if(result["User"] == this.user_id){
                     this.addNoti(result["Info"], "info")
-                    this.$forceUpdate();
                 }
             })
 
@@ -296,6 +303,12 @@ export default {
                 if(this.game.data[ids[i]].Pos == idx)users.push(this.game.data[ids[i]]);
             }
             return users
+        },
+        buyProperty(){
+            this.socket.emit("request-buy", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+        },
+        getProperties(){
+            return this.game.data[this.user_id]["Properties"].join(", ")
         }
     }
 
@@ -335,6 +348,13 @@ export default {
 .cell{
     width: 75px;
     height: 75px;
+}
+
+.center{
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%)
 }
 
 </style>
