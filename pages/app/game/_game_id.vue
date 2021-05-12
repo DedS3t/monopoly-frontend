@@ -326,8 +326,8 @@ export default {
         leave(){
             if(this.connected){
                 this.socket.emit('leave-game', JSON.stringify({"game_id": this.game_id,"user_id": this.user_id}))
-                this.socket.destroy();
             }
+            this.socket.destroy();
             this.$router.push("/app/")
         },
         async VerifyRoom(){

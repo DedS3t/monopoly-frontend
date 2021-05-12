@@ -10,6 +10,7 @@
             <input type="submit" value="Join Game" />
         </form>
         <button @click="logout">Logout</button>
+        <button @click="findGame">Find Game</button>
         <h1>Currently {{ gameLength }} public games available</h1>
         <div v-for="game in games" :key="game.Id">
             <h1>Game: {{ game.Name }} <NuxtLink :to="'/app/game/' + game.Id">Join</NuxtLink></h1>
@@ -61,6 +62,19 @@ export default {
                 alert("Not a valid room id")
             }
            
+        },
+        async findGame(){
+            try{
+                let result = await this.$axios.get("http://localhost:3333/game/find")
+                if (result.status == 204 || result.data.Id == undefined) {
+                    alert("No games found")
+                }else{
+                    this.$router.push(`/app/game/${result.data.Id}`)
+                }
+            }catch(err) {
+                alert("Error")
+            }
+
         },
         async logout(){
             await this.$auth.logout();
