@@ -17,6 +17,10 @@
                 <h1>Turn: {{ game.turn }}</h1>
                 <div v-if="game.turn == user_id">
                     <h1>Your turn</h1>
+                    <div v-if="isInJail()">
+                        <h1>You are in jail</h1>
+                        <button @click="payOutOfJail">Pay $50 to get out</button>
+                    </div> 
                     <div v-if="game.roll">
                         <h1>Dice 1: {{ game.roll["dice1"] }}</h1>
                         <h1>Dice 2: {{ game.roll["dice2"] }}</h1>
@@ -157,7 +161,7 @@ export default {
         let finishTurn = this.finishTurn;
         let buyProperty = this.buyProperty;
         this.alanBtnInstance = alanBtn({
-            key: "",
+            key: "bfdc8a46d259d388244cfe8a0cbd27662e956eca572e1d8b807a3e2338fdd0dc/stage",
             onCommand: function (commandData) {
                 if (commandData.command === "start") {
                     startGame();
@@ -245,14 +249,14 @@ export default {
 
             this.socket.on("payed-rent", (info) => {
                 console.log(`Payed rent ${info}`)
-                let [ user_id, user_id2, bal, bal2] = info.split(".")
+                let [ user_id, user_id2, bal, bal2, change] = info.split(".")
 
                 if(user_id == this.user_id){
-                    this.addNoti(`You payed ${this.game.data[this.user_id].Balance - Number(bal)} rent`, "danger");
-                     this.speakMessage("general", `You payed ${this.game.data[this.user_id].Balance - Number(bal)} rent`)
+                    this.addNoti(`You payed ${change} rent`, "danger");
+                    this.speakMessage("general", `You payed ${change} rent`)
                 }else if(user_id2 == this.user_id){
-                    this.addNoti(`You got ${Number(bal2) - this.game.data[user_id2].Balance} from rent`, 'info');
-                    this.speakMessage("general", `You got ${Number(bal2) - this.game.data[user_id2].Balance} from rent`)
+                    this.addNoti(`You got ${change} from rent`, 'info');
+                    this.speakMessage("general", `You got ${change} from rent`)
                 }
 
                 this.game.data[user_id] = {...this.game.data[user_id], Balance:Number(bal)}
@@ -277,6 +281,33 @@ export default {
                     this.addNoti(result["Info"], "info")
                 }
             })
+
+            this.socket.on("jail", (info) => {
+                console.log(`${info} was jailed`);
+                this.game.data[info] = {...this.game.data[info], Pos: 10, Jail: true}
+                if(info == this.user_id){
+                    this.$forceUpdate()
+                    this.addNoti("You are in jail", "danger")
+                }
+            });
+
+            this.socket.on("free-jail", (info) => {
+                console.log(`${info} is free from jail`)
+                this.game.data[info] = {...this.game.data[info], Jail: false}
+                if(info == this.user_id)  this.$forceUpdate();
+            });
+
+            this.socket.on("payment", (info) => {
+                console.log(`Payment ${info}`)
+                let result = JSON.parse(info)
+                // TODO find out if changing state with {...this.game.data} is better than direct change
+                this.game.data[info] = {...this.game.data[info], Balance: Number(result["Balance"])}
+                if(result["User"] == this.user_id) {
+                    this.$forceUpdate()
+                    this.addNoti(result["Info"], "warning")
+                }
+
+            });
 
             this.socket.on("bankrupt", (info) => {
                 console.log(`${info} went bankrupt`)
@@ -306,6 +337,11 @@ export default {
                 this.$router.push("/app/")
             }
         },
+        payOutOfJail(){
+            if(this.game.turn == this.user_id){
+                this.socket.emit("pay-out-jail", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+            }
+        },
         start() {
             if(!this.game.started){
                 this.socket.emit("start-game", this.game_id)
@@ -324,6 +360,9 @@ export default {
         },
         currentBalance(){
             return this.game.data[this.user_id].Balance
+        },
+        isInJail(){
+            return this.game.data[this.user_id].Jail
         },
         addNoti(text, type){
             let id = Array(17).join((Math.random().toString(36)+'00000000000000000').slice(2, 18)).slice(0, 16)
@@ -379,7 +418,7 @@ export default {
 .alert.success {background-color: #4CAF50;}
 .alert.info {background-color: #2196F3;}
 .alert.warning {background-color: #ff9800;}
-
+.alert.danger {background-color:#f44336}
 .closebtn {
   margin-left: 15px;
   color: white;
