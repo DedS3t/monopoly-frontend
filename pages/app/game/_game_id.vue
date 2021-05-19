@@ -9,7 +9,7 @@
             <button @click="start">Start</button>
         </div>
 
-        <div v-else>
+        <div v-else class="center" style="z-index: 100">
             <h1>Balance: {{ currentBalance() }}</h1>
             <h1>Pos: {{ currentPosition() }}</h1>
             <h1>Properties {{ getProperties() }}</h1>
@@ -27,68 +27,31 @@
                     </div> 
                     <button v-if="!game.hasRolled" @click="rollDice">Roll dice</button>
                     <button @click="finishTurn">Finish turn</button>
-                    <div v-if="turnInfo.buyproperty" class="center" style="z-index: 100">
+                    <div v-if="turnInfo.buyproperty" class="" >
                         <h1>You have landed on {{ turnInfo["buyproperty"]["name"] }}. Would you like to buy it for {{ turnInfo["buyproperty"]["price"] }}</h1>
                         <button @click="buyProperty">Yes</button>
                         <button>No</button>
                     </div> 
                 </div>
-                
             </div>
 
-
-
-            <table id="board" style="display: table;" class="center">
-                <tbody>
-                    <tr>
-                        <td v-for="i in 11" class="border-2 cell" :key="i">
-                            <div v-for="user in getUsers(i + 19)" :key="user.Color">
-                                {{ user.Username }}
-                            </div> 
-                        </td>
-                    </tr>
-
-                    <tr v-for="n in 9" :key="n">
-
-                        <td class="cell" style="border: 1px solid black;">
-                            <div v-for="user in getUsers((10 - n) + 10)" :key="user.Color">
-                                {{ user.Username }}
-                            </div> 
-                        </td>
-                        <td colspan="9"></td>
-                        <td class="cell" style="border: 1px solid black;">
-                            <div v-for="user in getUsers(n + 30)" :key="user.Color">
-                                {{ user.Username }}
-                            </div> 
-                        </td>
-
-                    </tr>
-
-                    <tr>
-                        <td  v-for="i in 11" class="border-2 cell" :key="i">
-                            <div v-for="user in getUsers(10 - (i - 1))" :key="user.Color">
-                                {{ user.Username }}
-                            </div> 
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+           
             <div v-for="notification in game.notifications" :key="notification.id">
                 <div class="alert" :class="notification.type">
                     <h1>{{ notification.text }}</h1>
                 </div>
             </div>
         </div>
-
+         <canvas ref="canvas" id="canvas" class="center"></canvas>
         <div class="alan-btn"></div>
     </div>
 </template>
 
 <script>
 import io from 'socket.io-client'
+import board from '../../../components/Board'
 
 export default {
-
     async asyncData({ params }) {
         const game_id = params.game_id;
         return { game_id };
@@ -109,8 +72,23 @@ export default {
                 turnInfo: {},
                 data: {},
                 notifications: [],
-            }
+            },
+            canvas: {
+                canvas: null,
+                board: null,
+                w: 0,
+                h: 0,
+                size: 90,
+            },
         }
+    },
+    mounted(){
+        var c = document.getElementById("canvas");
+        this.canvas.canvas = c;
+        this.canvas.board = c.getContext('2d');
+        this.canvas.w = canvas.width;
+        this.canvas.h = canvas.height;
+        this.canvas.board.fillStyle = "#000000"
     },
     async created(){
 
@@ -210,6 +188,7 @@ export default {
                     }  
                 }
                 this.game.data[this.game.turn] = {...this.game.data[this.game.turn], Pos: pos}
+                this.rerender();
             })
 
             this.socket.on("buy-request", (info) => {
@@ -276,6 +255,7 @@ export default {
                     this.game.data[result["User"]] = {...this.game.data[result["User"]], Balance: Number(result["Balance"])}
                 }else if(result["Action"] == "move"){
                     this.game.data[result["User"]] = {...this.game.data[result["User"]], Pos: Number(result["Pos"])}
+                    this.rerender();
                 }
                 if(result["User"] == this.user_id){
                     this.addNoti(result["Info"], "info")
@@ -313,6 +293,9 @@ export default {
                 console.log(`${info} went bankrupt`)
                 if(info == this.user_id) this.leave();
             })
+
+            window.addEventListener('resize', this.resize);
+            this.resize();
         });
         
 
@@ -382,6 +365,12 @@ export default {
             }
             return users
         },
+        getCard(idx){
+            if(idx >= 40){
+                idx -= 40;
+            }
+            return board[idx.toString()]
+        },
         buyProperty(){
             if(this.game.turn == this.user_id){
                  this.socket.emit("request-buy", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
@@ -398,6 +387,108 @@ export default {
                     }
                 })
             }
+        },
+        range(size, startAt = 0) {
+                return [...Array(size).keys()].map(i => i + startAt);
+        },
+        drawImageCenter(x, y, path){
+            var image = new Image();
+            let w = this.canvas.w;
+            let h = this.canvas.h;
+            image.src = require(`~/assets/${path}`)
+            image.addEventListener('load', () => {
+                let imgWidth = (w / 11) / 1.5;
+                let imgHeight = (h / 11) / 1.5;
+                this.canvas.board.drawImage(image, x + (imgWidth / 3), y + (h / 11) / 3, imgWidth, imgHeight)
+            }, false)
+           
+        },
+        drawCell(x, y, card, users){
+                let ctx = this.canvas.board;
+                let w = this.canvas.w;
+                let h = this.canvas.h;
+                ctx.font = "15px Ariel";
+                ctx.textAlign = "center";
+                // draw cell
+                ctx.moveTo(x, y);
+                ctx.lineTo(x, y + (h / 11))
+                ctx.lineTo(x + (w / 11),y + (h / 11));
+                ctx.lineTo(x + (w / 11),y + 0);
+                ctx.lineTo(x, y)
+                // draw top rect
+                if(card.group == "yellow"){ctx.fillStyle = "#f2dc49"
+                }else if(card.group == "blue"){ctx.fillStyle = "#001aff"
+                }else if(card.group == "red"){ctx.fillStyle = "#ff0000"
+                }else if(card.group == "orange"){ctx.fillStyle = "#ffa200"
+                }else if(card.group == "purple"){ctx.fillStyle = "#6200c4"
+                }else if(card.group == "lightblue"){ctx.fillStyle = "#3bc9f5"
+                }else if(card.group == "green"){ctx.fillStyle = "#396e0d"
+                }else if(card.group == "brown"){ctx.fillStyle = "#6e3e0d"}
+                if(card.type == "property" && (card.group != "railroad" && card.group != "utility")){ctx.fillRect(x, y, (w / 11), (h / 11) / 6)}
+                ctx.fillStyle = "#000000"
+                // draw name
+                ctx.fillText(card.name, x + (w / 11) / 2, y + (h / 11) / 3, (w / 11))
+                // draw price
+                if(card.price) {
+                    ctx.textAlign = "start"
+                    ctx.fillText(`$${card.price}`, x + 7, y + (h / 11) / 2, (w / 11) / 2)
+                    ctx.textAlign = "center"
+                }
+                // handle special cards
+                if(card.type == "special"){
+                    if(card.action == "chance"){
+                        // handle chance card
+                        this.drawImageCenter(x, y, 'chance.png')
+                    }else if(card.action == "chest"){
+                        // handle chest
+                        this.drawImageCenter(x, y, 'chest.png')
+                    }
+                }else if(card.group == "railroad"){
+                        // handle railroads
+                        this.drawImageCenter(x, y, 'railroad.png')
+                }else if(card.posistion == 0){
+                    // handle go
+                    this.drawImageCenter(x, y, 'go.png')
+                }
+
+                // draw users
+                for(let i = 0;i < users.length; i++){
+                    ctx.fillStyle = users[i].Color;
+                    ctx.fillRect(x + (((w / 11) / 10) * i), y + (h / 11) / 1.25, (w / 11) / 10, (w / 11) / 10)
+                }
+                ctx.fillStyle = "#000000"
+                ctx.stroke();
+        },
+        drawBoard(){
+                // top row
+                let w = this.canvas.w;
+                let h = this.canvas.h;
+                for(const i of this.range(11)){
+                    this.drawCell((w / 11) * i , 0, this.getCard(i + 20), this.getUsers(i + 20))
+                }
+                // bottom row
+                for(const i of this.range(11)){
+                    this.drawCell((w / 11) * i, h - (h / 11), this.getCard(10 - i), this.getUsers(10 - i))
+                }
+                // right row
+                for(const i of this.range(9)){
+                    this.drawCell(0, (h / 11) * (i + 1), this.getCard(19 - i), this.getUsers(19 - i))
+                }
+                // left row
+                for(const i of this.range(9)){
+                    this.drawCell(w - (w / 11), (h / 11) * (i + 1), this.getCard(i + 31), this.getUsers(i + 31))
+                }
+
+        },
+        resize(){
+                this.canvas.canvas.height = window.innerHeight * (this.canvas.size / 100);
+                this.canvas.canvas.width = window.innerWidth * (this.canvas.size / 100);
+                this.canvas.w = this.canvas.canvas.width;
+                this.canvas.h = this.canvas.canvas.height;
+                this.drawBoard();
+        },
+        rerender(){
+            this.resize();
         }
     }
 
