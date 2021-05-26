@@ -1,16 +1,19 @@
 <template>
     <div>
-        <button @click="logout" class="px-5 text-white py-2 text-xl rounded-lg bg-gradient-to-b border-2 from-red-600 to-red-400 transition delay-100 duration-500 ease-in-out transform hover:-translate-y-1 hover:scale-110 top-left">Logout</button>
+        <button @click="logout" class="px-5 text-white py-2 text-xl rounded-lg bg-gradient-to-b border-2 from-blue-600 to-blue-400 transition delay-100 duration-500 ease-in-out transform hover:-translate-y-1 hover:scale-110 top-left">Logout</button>
+
+        <h1 class="top-center font-bold text-8xl mt-4">Monopoly</h1>
 
         <div class="center text-center w-11/12 m-auto">
             <div class="w-2/3 m-auto">
                 <h1 class="font-bold text-2xl">Create Game</h1>
                 <form @submit.prevent="createGame">
-                    <input type="text" placeholder="Game Name" v-model="form.name">
+                    <input type="text" placeholder="Enter Game Name" v-model="form.name">
                     <div class="w-full">
-                        <select v-model="form.type" class="w-1/3 pr-10 pl-3 py-3 rounded-lg my-2">
-                            <option>public</option>
-                            <option>private</option>
+                        <select v-model="form.type" class="w-1/3 pr-10 pl-3 py-3 rounded-lg my-2 bg-white select">
+                            <option selected data-default>Select Game Access Level</option>
+                            <option class="text-black">public</option>
+                            <option class="text-black">private</option>
                         </select>
                     </div>
 
@@ -18,7 +21,7 @@
                 </form>
                 <h1 class="font-bold text-2xl mt-2">Join Game</h1>
                 <form @submit.prevent="joinGame">
-                    <input type="text" placeholder="Game Name" v-model="joinForm.code">
+                    <input type="text" placeholder="Enter Game Code" v-model="joinForm.code">
                     <input type="submit" value="Join Game" class="px-5 text-white py-2 text-xl rounded-lg bg-gradient-to-b border-2 from-green-600 to-green-400 transition delay-100 duration-500 ease-in-out transform hover:-translate-y-1 hover:scale-110" />
                 </form>
             </div>
@@ -57,7 +60,7 @@ export default {
         return {
             form: {
                 name: "",
-                type: "public",
+                type: "Select Game Access Level",
             },
             joinForm: {
                 code: "",
@@ -86,6 +89,10 @@ export default {
                 try{
                     if(this.form.name.length < 1){
                         alertify.alert("Error", "Game name must be at least 1 character long").set("movable", false);
+                        this.spamProtection.createGame = false;
+                        return;
+                    }else if(this.form.type == "Select Game Access Level"){
+                        alertify.alert("Error", "Please select a valid access level").set("movable", false);
                         this.spamProtection.createGame = false;
                         return;
                     }
@@ -161,6 +168,22 @@ export default {
         margin: 8px 0;
         display: inline-block;
         border: 1px solid #ccc;
+        border-radius: 0.5rem;
         box-sizing: border-box;
+    }
+
+
+    .top-center{
+        position: absolute;
+        left: 50%;
+        top: 5%;
+        transform: translate(-50%, 0);
+    }
+
+    .select{
+        border: 1px solid #ccc;
+    }
+    select option[data-default] {
+        color: #888;
     }
 </style>

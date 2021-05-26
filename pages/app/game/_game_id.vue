@@ -8,8 +8,8 @@
             <h1 class="font-bold text-6xl">Code: {{ game_id }}</h1>
             <h1 class="text-5xl">Players: {{ players }}</h1>
             <div class="mt-5">
-                <button @click="start" class="px-5 text-white py-2 text-xl rounded-lg bg-gradient-to-b border-2 from-blue-600 to-blue-400 transition delay-100 duration-500 ease-in-out transform hover:-translate-y-1 hover:scale-110">Start</button>
-                <button @click="leave" class="px-5 text-white py-2 text-xl rounded-lg bg-gradient-to-b border-2 from-red-600 to-red-400 transition delay-100 duration-500 ease-in-out transform hover:-translate-y-1 hover:scale-110">Leave</button>
+                <button @click="start" class="px-5 text-white py-2 text-xl rounded-lg bg-gradient-to-b border-2 from-green-600 to-green-400 transition delay-100 duration-500 ease-in-out transform hover:-translate-y-1 hover:scale-110">Start</button>
+                <button @click="leave" class="px-5 text-white py-2 text-xl rounded-lg bg-gradient-to-b border-2  from-blue-600 to-blue-400 transition delay-100 duration-500 ease-in-out transform hover:-translate-y-1 hover:scale-110">Leave</button>
             </div>
 
             
@@ -28,7 +28,7 @@
                 <h1>Balance: {{ currentBalance() }}</h1>
                 <h1>Pos: {{ currentPosition() }}</h1>
                 <div v-if="game.turn">
-                <h1>Turn: {{ game.data[game.turn].Username }} <span v-if="game.turn == user_id">(You)</span></h1>
+                    <h1>Turn: {{ game.data[game.turn].Username }} <span v-if="game.turn == user_id">(You)</span></h1>
                     <div v-if="game.turn == user_id">
                         <div v-if="isInJail()">
                             <h1 class="text-red-700">You are in jail</h1>
@@ -132,8 +132,13 @@ export default {
                 board: null,
                 w: 0,
                 h: 0,
+                startW: 0,
+                startH: 0,
                 size: 90,
             },
+            spamProtection: {
+                start: false, 
+            }
             
         }
     },
@@ -141,8 +146,10 @@ export default {
         var c = document.getElementById("canvas");
         this.canvas.canvas = c;
         this.canvas.board = c.getContext('2d');
-        this.canvas.w = canvas.width;
-        this.canvas.h = canvas.height;
+        this.canvas.w = canvas.width // * (11 /13);
+        this.canvas.h = canvas.height //* (11 / 13);
+        //this.canvas.startW = (canvas.width / 13)
+        // this.canvas.startH = (canvas.height / 13);
         this.canvas.board.fillStyle = "#000000"
     },
     async created(){
@@ -308,7 +315,7 @@ export default {
                     this.addNoti(`You payed ${change} rent`, "danger");
                     this.speakMessage("general", `You payed ${change} rent`)
                 }else if(user_id2 == this.user_id){
-                    this.addNoti(`You got ${change} from rent`, 'info');
+                    this.addNoti(`You got ${change} from rent`, 'success');
                     this.speakMessage("general", `You got ${change} from rent`)
                 }
 
@@ -344,6 +351,7 @@ export default {
                     this.addNoti("You are in jail", "danger")
                     this.speakMessage("general", `You are in jail`)
                 }
+                this.$forceUpdate();
             });
 
             this.socket.on("free-jail", (info) => {
@@ -401,8 +409,11 @@ export default {
             }
         },
         start() {
-            if(!this.game.started){
-                this.socket.emit("start-game", this.game_id)
+            if(!this.game.started && !this.spamProtection.start){
+                this.socket.emit("start-game", this.game_id);
+                setTimeout(() => {
+                    this.spamProtection.start = true;
+                }, 1000)
             }   
         },
         finishTurn(){
@@ -644,38 +655,7 @@ export default {
 </script>
 
 <style scoped>
-.alert {
-  padding: 20px;
-  background-color: #f44336;
-  color: white;
-  opacity: 1;
-  transition: opacity 0.6s;
-  margin-bottom: 15px;
-}
 
-.alert.success {background-color: #4CAF50;}
-.alert.info {background-color: #2196F3;}
-.alert.warning {background-color: #ff9800;}
-.alert.danger {background-color:#f44336}
-.closebtn {
-  margin-left: 15px;
-  color: white;
-  font-weight: bold;
-  float: right;
-  font-size: 22px;
-  line-height: 20px;
-  cursor: pointer;
-  transition: 0.3s;
-}
-
-.closebtn:hover {
-  color: black;
-}
-
-.cell{
-    width: 75px;
-    height: 75px;
-}
 
 .center{
     position: absolute;
