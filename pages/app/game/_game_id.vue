@@ -1,17 +1,19 @@
 <template>
     <div>
-        <button @click="speak = !speak">
-            <i v-if="speak" class="fas fa-volume-up text-2xl"></i>
-            <i v-else class="fas fa-volume-mute text-2xl"></i>
-        </button>
-        <div v-if="!game.started" class="center-top text-center">
-            <h1 class="font-bold text-6xl">Code: {{ game_id }}</h1>
-            <h1 class="text-5xl">Players: {{ players }}</h1>
-            <div class="mt-5">
-                <button @click="start" class="px-5 text-white py-2 text-xl rounded-lg bg-gradient-to-b border-2 from-green-600 to-green-400 transition delay-100 duration-500 ease-in-out transform hover:-translate-y-1 hover:scale-110">Start</button>
-                <button @click="leave" class="px-5 text-white py-2 text-xl rounded-lg bg-gradient-to-b border-2  from-blue-600 to-blue-400 transition delay-100 duration-500 ease-in-out transform hover:-translate-y-1 hover:scale-110">Leave</button>
-            </div>
 
+        <div v-if="!game.started" >
+            <button @click="speak = !speak">
+                <i v-if="speak" class="fas fa-volume-up text-2xl"></i>
+                <i v-else class="fas fa-volume-mute text-2xl"></i>
+            </button>    
+            <div class="center-top text-center">
+                <h1 class="font-bold text-6xl">Code: {{ game_id }}</h1>
+                <h1 class="text-5xl">Players: {{ players }}</h1>
+                <div class="mt-5">
+                    <button @click="start" class="px-5 text-white py-2 text-xl rounded-lg bg-gradient-to-b border-2 from-green-600 to-green-400 transition delay-100 duration-500 ease-in-out transform hover:-translate-y-1 hover:scale-110">Start</button>
+                    <button @click="leave" class="px-5 text-white py-2 text-xl rounded-lg bg-gradient-to-b border-2  from-blue-600 to-blue-400 transition delay-100 duration-500 ease-in-out transform hover:-translate-y-1 hover:scale-110">Leave</button>
+                </div>
+            </div>
             
         </div>
 
@@ -47,8 +49,8 @@
             <!-- Properties -->
             <div class="tabcontent" v-if="activeTab == 1">
                 <div class="float-left w-1/4">
-                    <button v-for="property in getProperties()" class="w-full" :key="property" @click="activeProperty = getPropertyInfo(property)">
-                        {{ property }}
+                    <button v-for="property in getProperties()" class="w-full" :key="property.Name" @click="activeProperty = getPropertyInfo(property)">
+                        {{ property.Name }}
                     </button> 
                 </div> 
                 <div class="float-right w-3/4">
@@ -57,10 +59,10 @@
                     </div>
                     <div v-if="activeProperty">
                         <h1>Price: {{ activeProperty.price }}</h1>
-                        <h1>Rent: {{ activeProperty.rent }}</h1>
-                        <h1>Houses: 0</h1>
-                        <button>Mortgage (${{ activeProperty.mortgage }})</button>
-                        <button v-if="activeProperty.housecost">Buy House (${{ activeProperty.housecost }})</button>
+                        <h1>Rent: {{ calculateRent(activeProperty.posistion, activeProperty.houses) }}</h1>
+                        <h1>Houses: {{ activeProperty.houses }}</h1>
+                        <button >Mortgage (${{ activeProperty.mortgage }})</button>
+                        <button v-if="activeProperty.housecost" @click="buyHouse(activeProperty.posistion)">Buy House (${{ activeProperty.housecost }})</button>
                     </div> 
                 </div> 
 
@@ -88,6 +90,10 @@
             <div class="tabcontent" v-if="activeTab == 3">
                 <h1>Game: {{ game_id }}</h1>
                 <h1>Players: {{ players }}</h1>
+                <button @click="speak = !speak">
+                    <i v-if="speak" class="fas fa-volume-up text-2xl"></i>
+                    <i v-else class="fas fa-volume-mute text-2xl"></i>
+                </button>
             </div>
 
         </div>
@@ -101,6 +107,8 @@
 <script>
 import io from 'socket.io-client'
 import board from '../../../components/Board'
+const directions = {BOTTOM: 0, LEFT: 1, TOP: 2, RIGHT: 3}
+
 
 export default {
     async asyncData({ params }) {
@@ -134,7 +142,8 @@ export default {
                 h: 0,
                 startW: 0,
                 startH: 0,
-                size: 90,
+                size: 100,
+                users: [],
             },
             spamProtection: {
                 start: false, 
@@ -146,10 +155,10 @@ export default {
         var c = document.getElementById("canvas");
         this.canvas.canvas = c;
         this.canvas.board = c.getContext('2d');
-        this.canvas.w = canvas.width // * (11 /13);
-        this.canvas.h = canvas.height //* (11 / 13);
-        //this.canvas.startW = (canvas.width / 13)
-        // this.canvas.startH = (canvas.height / 13);
+        this.canvas.w = canvas.width * (11 /13);
+        this.canvas.h = canvas.height * (11 / 13);
+        this.canvas.startW = (canvas.width / 13)
+        this.canvas.startH = (canvas.height / 13);
         this.canvas.board.fillStyle = "#000000"
     },
     async created(){
@@ -296,7 +305,7 @@ export default {
                 let [ user_id, bal, Name ] = info.split(".");
 
                 this.game.data[user_id] = {...this.game.data[user_id], Balance: Number(bal)}
-                this.game.data[user_id]["Properties"] = [...this.game.data[user_id]["Properties"], Name]
+                this.game.data[user_id]["Properties"] = [...this.game.data[user_id]["Properties"], {Name, Houses: 0}]
                 if(user_id == this.user_id){
                     this.addNoti("You have bought the property", "success");
                     this.speakMessage("general", `You have bought the property`)
@@ -372,6 +381,30 @@ export default {
 
             });
 
+            this.socket.on("bought-house", (info) => {
+                console.log(`House bought ${info}`)
+                let result = JSON.parse(info);
+                let success = false;
+                for(let i = 0; i < this.game.data[result["user_id"]]["Properties"].length; i++){
+                    if(this.game.data[result["user_id"]]["Properties"][i].Name == result["property"]){
+                        this.game.data[result["user_id"]]["Properties"][i].Houses = Number(result["houses"])
+                        success = true;
+                        break;
+                    }
+                }
+                if(!success){
+                    this.addNoti(`There was an error with buying the house`, "danger")
+                }else{
+                    if(result["user_id"] == this.user_id){
+                        this.addNoti(`You have bought a house for ${result["property"]}`, "success")
+                        this.activeProperty = null;
+                    }else{
+                        this.addNoti(`${this.game.data[result["user_id"]].Username} has bought a house for ${result["property"]}`, 'info')
+                    }
+                }
+
+            })
+
             this.socket.on("bankrupt", (info) => {
                 console.log(`${info} went bankrupt`)
                 if(info == this.user_id) this.leave();
@@ -382,6 +415,16 @@ export default {
             })
 
             window.addEventListener('resize', this.resize);
+            this.canvas.canvas.addEventListener('click', (event) => {
+                    const rect = this.canvas.canvas.getBoundingClientRect();
+                    const x = event.clientX - rect.left;
+                    const y = event.clientY - rect.top;
+                    this.canvas.users.forEach((user) => {
+                        if(this.isInCircle(x, y, user.x, user.y, user.r)){
+                            alertify.alert("User",`Clicked on user ${user.user.Username}`);
+                        }
+                    })
+            });
             this.resize();
         });
         
@@ -395,6 +438,14 @@ export default {
             }
             this.socket.destroy();
             this.$router.push("/app/")
+        },
+        isInCircle(a, b, x, y, r){
+            var dist_points = (a - x) * (a - x) + (b - y) * (b - y);
+            r *= r;
+            if (dist_points < r) {
+                return true;
+            }
+            return false;
         },
         async VerifyRoom(){
             let result = (await this.$axios.get(`http://localhost:3333/game/verify?code=${this.game_id}`, {headers: {'Content-Type': 'application/json'}})).data
@@ -422,6 +473,11 @@ export default {
         rollDice(){
             if(!this.game.hasRolled){
                 this.socket.emit('roll-dice', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+            }
+        },
+        buyHouse(pos){
+            if(this.game.turn == this.user_id){
+                this.socket.emit('buy-house', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id, "card_pos": String(pos)}))
             }
         },
         currentPosition(){
@@ -473,14 +529,18 @@ export default {
                  this.socket.emit("request-buy", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
             } 
         },
-        getPropertyInfo(name){
+        getPropertyInfo(prop){
             let posistions = Object.keys(board);
             for(let i = 0; i < posistions.length; i++){
-                if(board[posistions[i]].name == name) return board[posistions[i]];
+                if(board[posistions[i]].name == prop.Name) return {...board[posistions[i]], houses: prop.Houses};
             }
-            console.log(`Couldnt find card ${name}`)
+            console.log(`Couldnt find card ${prop.Name}`)
             return null;
-        }, 
+        },
+        calculateRent(pos, houses){
+            if(houses && houses > 0) return board[pos.toString()].multiplied_rent[houses - 1];
+            else return board[pos.toString()].rent 
+        },
         getProperties(){
             return this.game.data[this.user_id]["Properties"]
         },
@@ -516,26 +576,51 @@ export default {
                 
             }, false)
         },
-        drawCell(x, y, card, users){
+        drawCell(x, y, card, users, direction){
                 let ctx = this.canvas.board;
                 let w = this.canvas.w;
                 let h = this.canvas.h;
                 ctx.font = "15px Ariel";
                 ctx.textAlign = "center";
                 // draw cell
+                ctx.beginPath();
                 ctx.moveTo(x, y);
                 ctx.lineTo(x, y + (h / 11))
                 ctx.lineTo(x + (w / 11),y + (h / 11));
                 ctx.lineTo(x + (w / 11),y + 0);
                 ctx.lineTo(x, y)
+                ctx.closePath();
+                ctx.stroke();
+
                 // draw users
-                let drawUsers = () => {
+                let drawUsers = () =>{
                     for(let i = 0;i < users.length; i++){
+                        ctx.beginPath();
                         ctx.fillStyle = users[i].Color;
-                        ctx.fillRect(x + (((w / 11) / 10) * i), y + (h / 11) / 1.25, (w / 11) / 10, (w / 11) / 10)
+                        let aspect = users.length > 4 ? users.length : (w / 11) / 4;
+                        switch(direction){
+                            case directions.BOTTOM:
+                                ctx.arc(x + (aspect * i) + (aspect / 2), y + (h / 11) + (aspect / 2) , (aspect / 2), 0, Math.PI * 2)
+                                this.canvas.users.push({x: x + (aspect * i) + (aspect / 2),y: y + (h / 11) + (aspect / 2), r: (aspect / 2), user: users[i]})
+                                break;
+                            case directions.LEFT:
+                                ctx.arc(x - (aspect / 2), y + (aspect * i) + (aspect / 2), (aspect / 2), 0, Math.PI * 2)
+                                this.canvas.users.push({x: x - (aspect / 2),y: y + (aspect * i) + (aspect / 2), r: (aspect / 2), user: users[i]})
+                                break;
+                            case directions.TOP:
+                                ctx.arc(x + (aspect * i) + (aspect / 2), y - (aspect / 2), (aspect / 2), 0, Math.PI * 2)
+                                this.canvas.users.push({x: x + (aspect * i) + (aspect / 2), y: y - (aspect / 2), r: (aspect / 2), user: users[i]})
+                                break;
+                            case directions.RIGHT:
+                                ctx.arc(x + (w / 11) + (aspect / 2), y + (aspect * i) + (aspect / 2), (aspect / 2), 0, Math.PI * 2)
+                                this.canvas.users.push({x: x + (w / 11) + (aspect / 2), y: y + (aspect * i) + (aspect / 2), r: (aspect / 2), user: users[i]})
+                                break;
+                        }
+                        ctx.closePath()
+                        ctx.fill()
                     }
-                    ctx.fillStyle = "#000000"
                 }
+
                 if(card.posistion == 0){
                     // handle GO
                     this.drawImage(x, y, 'go.png', 1, drawUsers);
@@ -602,27 +687,30 @@ export default {
                 let w = this.canvas.w;
                 let h = this.canvas.h;
                 for(const i of this.range(11)){
-                    this.drawCell((w / 11) * i , 0, this.getCard(i + 20), this.getUsers(i + 20))
+                    this.drawCell((w / 11) * i + this.canvas.startW, 0 + this.canvas.startH, this.getCard(i + 20), this.getUsers(i + 20), directions.TOP)
                 }
                 // bottom row
                 for(const i of this.range(11)){
-                    this.drawCell((w / 11) * i, h - (h / 11), this.getCard(10 - i), this.getUsers(10 - i))
-                }
-                // right row
-                for(const i of this.range(9)){
-                    this.drawCell(0, (h / 11) * (i + 1), this.getCard(19 - i), this.getUsers(19 - i))
+                    this.drawCell((w / 11) * i + this.canvas.startW, h - (h / 11) + this.canvas.startH, this.getCard(10 - i), this.getUsers(10 - i), directions.BOTTOM)
                 }
                 // left row
                 for(const i of this.range(9)){
-                    this.drawCell(w - (w / 11), (h / 11) * (i + 1), this.getCard(i + 31), this.getUsers(i + 31))
+                    this.drawCell(0 + this.canvas.startW, (h / 11) * (i + 1) + this.canvas.startH, this.getCard(19 - i), this.getUsers(19 - i), directions.LEFT)
+                }
+                // right row
+                for(const i of this.range(9)){
+                    this.drawCell(w - (w / 11) + this.canvas.startW, (h / 11) * (i + 1) + + this.canvas.startH, this.getCard(i + 31), this.getUsers(i + 31), directions.RIGHT)
                 }
 
         },
         resize(){
                 this.canvas.canvas.height = window.innerHeight * (this.canvas.size / 100);
                 this.canvas.canvas.width = window.innerWidth * (this.canvas.size / 100);
-                this.canvas.w = this.canvas.canvas.width;
-                this.canvas.h = this.canvas.canvas.height;
+                this.canvas.w = this.canvas.canvas.width * (11 / 13);
+                this.canvas.h = this.canvas.canvas.height * (11 / 13);
+                this.canvas.startW = (this.canvas.canvas.width / 13)
+                this.canvas.startH = (this.canvas.canvas.height / 13);
+                this.canvas.users = [];
                 this.drawBoard();
         },
         rerender(){
