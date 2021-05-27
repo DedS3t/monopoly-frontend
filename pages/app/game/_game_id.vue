@@ -361,6 +361,7 @@ export default {
                     this.speakMessage("general", `You are in jail`)
                 }
                 this.$forceUpdate();
+                this.rerender();
             });
 
             this.socket.on("free-jail", (info) => {
@@ -401,6 +402,7 @@ export default {
                     }else{
                         this.addNoti(`${this.game.data[result["user_id"]].Username} has bought a house for ${result["property"]}`, 'info')
                     }
+                    this.rerender();
                 }
 
             })
@@ -576,10 +578,25 @@ export default {
                 
             }, false)
         },
+        getHouses(property){
+            if(!(property.Type == "special" || property.Group == "railroad" || property.Group == "utility")){
+                let users = Object.keys(this.game.data)
+                for(let i = 0; i < users.length; i++){
+                    for(let j = 0; j < this.game.data[users[i]].Properties.length; j++){
+                        if(this.game.data[users[i]].Properties[j].Name == property.name){
+                            return this.game.data[users[i]].Properties[j].Houses
+                        }
+                    }
+                }
+                return 0;
+            }else return 0;
+
+        },
         drawCell(x, y, card, users, direction){
                 let ctx = this.canvas.board;
                 let w = this.canvas.w;
                 let h = this.canvas.h;
+                
                 ctx.font = "15px Ariel";
                 ctx.textAlign = "center";
                 // draw cell
@@ -591,6 +608,22 @@ export default {
                 ctx.lineTo(x, y)
                 ctx.closePath();
                 ctx.stroke();
+
+                let houses = this.getHouses(card);
+
+                let drawHouses = () => {
+                    
+                    console.log(`Here3 ${houses}`)
+                    if(houses > 0) console.log(`Here2 ${houses}`)
+                    ctx.beginPath();
+                    for(let i = 0;i < houses; i++){
+                        ctx.fillStyle = "#208B2D";
+                        ctx.fillRect(x + (((w / 11) / 10) * i) + (4 * i), y + (h / 11) / 1.25, (w / 11) / 10, (w / 11) / 10)
+                    }
+                    ctx.fillStyle = "#000000"
+                    ctx.closePath();
+                    ctx.stroke();
+                }
 
                 // draw users
                 let drawUsers = () =>{
@@ -621,6 +654,9 @@ export default {
                     }
                 }
 
+                
+
+
                 if(card.posistion == 0){
                     // handle GO
                     this.drawImage(x, y, 'go.png', 1, drawUsers);
@@ -629,13 +665,13 @@ export default {
                     this.drawImage(x, y, 'free-parking.png', 1, drawUsers);
                 }else if(card.posistion == 30){
                     // handle go to jail
-                    this.drawImage(x, y, 'go-to-jail.png', 1, drawUsers);
+                    this.drawImage(x, y, 'go-to-jail.png', 1,drawUsers);
                 }else if(card.posistion == 38){
                     // handle luxury tax
-                    this.drawImage(x, y, 'luxury-tax.png', 1, drawUsers);
+                    this.drawImage(x, y, 'luxury-tax.png', 1, drawUsers());
                 }else if(card.posistion == 10){
                     // handle jail
-                    this.drawImage(x, y, 'jail.png', 0.75, drawUsers);
+                    this.drawImage(x, y, 'jail.png', 0.75, drawUsers());
                 }else{
                     // draw top rect
                     if(card.group == "yellow"){ctx.fillStyle = "#f2dc49"
@@ -674,9 +710,12 @@ export default {
                     }else if(card.posistion == 28){
                         // handle water works
                         this.drawImageOnCell(x, y, 'water-works.png')
+                    }else{
+                        drawHouses();
                     }
 
                     drawUsers();
+                    
                 }
 
                 ctx.fillStyle = "#000000"
