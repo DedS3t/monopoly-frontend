@@ -27,29 +27,35 @@
 
             <!-- Game Data -->
             <div v-if="activeTab == 0" class="tabcontent">
-                <h1>Balance: {{ currentBalance() }}</h1>
-                <h1>Pos: {{ currentPosition() }}</h1>
-                <div v-if="game.turn">
-                    <h1>Turn: {{ game.data[game.turn].Username }} <span v-if="game.turn == user_id">(You)</span></h1>
-                    <div v-if="game.turn == user_id">
-                        <div v-if="isInJail()">
-                            <h1 class="text-red-700">You are in jail</h1>
-                            <button @click="payOutOfJail">Pay $50 to get out</button>
-                        </div> 
-                        <div v-if="game.roll">
-                            <h1>Dice 1: <i :class="getClass(game.roll['dice1'])"></i></h1>
-                            <h1>Dice 2: <i :class="getClass(game.roll['dice2'])"></i></h1>
-                        </div> 
-                        <button v-if="!game.hasRolled" @click="rollDice">Roll <i class="fas fa-dice"></i></button>
-                        <p><button @click="finishTurn">Finish turn</button></p>
+                <h1 class="float-right text-green-700 font-bold text-xl part-border p-1">${{ currentBalance() }}</h1>
+                <div class="float-left">
+                    <h1 class="text-xl">Position: <span class="font-bold">{{ getCard(currentPosition()).name }}</span></h1>
+                    <div v-if="game.turn" class="mt-3">
+                        <h1 class="text-xl">Turn: <span class="font-bold">{{ game.data[game.turn].Username }}</span> <span v-if="game.turn == user_id">(You)</span></h1>
+                        <div v-if="game.turn == user_id">
+                            <div v-if="isInJail()">
+                                <h1 class="text-red-700">You are in jail</h1>
+                                <button @click="payOutOfJail">Pay $50 to get out</button>
+                            </div> 
+                            <div v-if="game.roll">
+                                <i :class="getClass(game.roll['dice1'])" class="inline-block text-6xl"></i>
+                                <i :class="getClass(game.roll['dice2'])" class="inline-block text-6xl ml-2"></i>
+                            </div> 
+                            <button v-if="!game.hasRolled" @click="rollDice" class="button">Roll <i class="fas fa-dice"></i></button>
+                            <p><button v-if="game.hasRolled" @click="finishTurn" class="button">Finish turn</button></p>
+                        </div>
+                        <div v-else>
+                            <h1 class="text-lg text-gray-500 mt-3">Waiting for your turn...</h1>
+                        </div>
                     </div>
                 </div>
+
             </div>
 
             <!-- Properties -->
             <div class="tabcontent" v-if="activeTab == 1">
                 <div class="float-left w-1/4">
-                    <button v-for="property in getProperties()" class="w-full" :key="property.Name" @click="activeProperty = getPropertyInfo(property)">
+                    <button v-for="property in getProperties()" class="w-11/12 m-auto border-1 border-gray-600 p-1" :key="property.Name" @click="activeProperty = getPropertyInfo(property)">
                         {{ property.Name }}
                     </button> 
                 </div> 
@@ -61,8 +67,8 @@
                         <h1>Price: {{ activeProperty.price }}</h1>
                         <h1>Rent: {{ calculateRent(activeProperty.posistion, activeProperty.houses) }}</h1>
                         <h1>Houses: {{ activeProperty.houses }}</h1>
-                        <button >Mortgage (${{ activeProperty.mortgage }})</button>
-                        <button v-if="activeProperty.housecost" @click="buyHouse(activeProperty.posistion)">Buy House (${{ activeProperty.housecost }})</button>
+                        <button class="button">Mortgage (${{ activeProperty.mortgage }})</button>
+                        <button v-if="activeProperty.housecost" class="button" @click="buyHouse(activeProperty.posistion)">Buy House (${{ activeProperty.housecost }})</button>
                     </div> 
                 </div> 
 
@@ -80,7 +86,7 @@
                     <tr v-for="player in getPlayers()" :key="player"> <!-- TODO export to components -->
                         <td>{{ game.data[player].Username }} <p v-if="player == user_id"> (You)</p></td>
                         <td>{{ game.data[player].Balance }}</td>
-                        <td>{{ game.data[player].Color }}<div class="w-3 h-3" :style="'background-color:' + game.data[player].Color"></div></td>
+                        <td><div class="circle" :style="'background-color:' + game.data[player].Color"></div></td>
                         <td>{{ game.data[player].Pos }}</td>
                     </tr> 
                 </table>
@@ -107,7 +113,7 @@
 <script>
 import io from 'socket.io-client'
 import board from '../../../components/Board'
-const directions = {BOTTOM: 0, LEFT: 1, TOP: 2, RIGHT: 3}
+const directions = {BOTTOM: 0, LEFT: 1, TOP: 2, RIGHT: 3} // directions enum
 
 
 export default {
@@ -171,11 +177,17 @@ export default {
         }
         console.log("emmiting join room")
 
+        this.socket.on("error-message", (info) => {
+            this.speakMessage("general", info)
+            this.addNoti(info, "danger")
+        });
+
         this.socket.on("failed", () => {
             this.$router.push("/app/")
         })
-        let user_id = (await this.$axios.get("http://localhost:3333/user/cur")).data
-        this.user_id = user_id
+        // let user_id = (await this.$axios.get("http://localhost:3333/user/cur")).data
+        let user_id = this.$auth.user;
+        this.user_id = user_id;
 
         
         this.socket.emit('join-game', JSON.stringify({"game_id": this.game_id, "user_id": user_id}))
@@ -203,11 +215,6 @@ export default {
             }
         }, 5000)
         
-        /*
-            Regular notifications are white bg
-
-        */
-
 
         // alan ai stuff
         // have to add reference to this before using because of scope issues
@@ -233,10 +240,49 @@ export default {
                     this.activeTab = 2;
                 }else if(commandData.command === "view-game"){
                     this.activeTab = 0;
-                }else if(commandData.command == "view-properties"){
+                }else if(commandData.command === "view-properties"){
                     this.activeTab = 1;
-                }else if(commandData.commnad == "view-location"){
+                }else if(commandData.commnad === "view-location"){
                     this.speakMessage("general", `You are at ${board[this.game.data[this.user_id].Pos.toString()].name}`, true)
+                }else if(commandData.command === "buy-house"){
+                    this.buyHouse(this.getPropertyByName(commandData.property).posistion);
+                }else if(commandData.command === "info"){
+                    let type = this.prepareText(commandData.type);
+                    let card = commandData.property.trim();
+                    let response = "Invalid Property";
+
+                    switch(type){
+                        case "houses": 
+                            let houses = this.getHouses(this.getPropertyByName(card))
+                            if(houses != -1)  response = `${commandData.property} has ${houses} houses`
+                            break;
+                        case "rent":
+                            let rent = this.getPropertyByName(card).rent;
+                            if(rent)response = `${commandData.property} has ${rent} rent`
+                            break;
+                        case "price":
+                            let price = this.getPropertyByName(card).price;
+                            if(price) response = `${commandData.property} costs ${price}`
+                            break;
+                        case "housecost":
+                            let housecost = this.getPropertyByName(card).housecost;
+                            if(housecost) response = `${commandData.property}'s house cost is ${housecost}`
+                            break;
+                    }
+
+                    this.speakMessage("general", response, true);
+                }else if(commandData.command === "who-owns"){
+                    let card = commandData.property.trim();
+                    let user = this.whoOwns(this.getPropertyByName(card))
+                    
+                    if(user == "") this.speakMessage("general","Property doesn't have an owner", true)
+                    else this.speakMessage("general", `${this.game.data[user].Username} owns ${commandData.property}`, true)
+                }else if(commandData.command === "how-far"){
+                    let card = commandData.property.trim();
+                    let closest = this.findClosest(card);
+
+                    if(closest && closest != Infinity) this.speakMessage("general", `${card} is ${closest} away`, true)
+                    else this.speakMessage("general", "Unable to find property", true)
                 }
             },
             rootEl: document.getElementById("alan-btn"),
@@ -258,7 +304,30 @@ export default {
             });
 
             this.socket.on("game-over", () => {
-                this.leave()
+                // non offical exit
+                    alertify.dismissAll();
+
+                    alertify.alert("Game End", `Game Over`);
+                    this.leave()
+            });
+
+            this.socket.on("game-done", (info) => {
+                // official exit w winner
+                if(info == this.user_id){
+                    // you won
+                    alertify.alert("Game End", 'YOU WON!!!')
+                }else{
+                    // didnt win
+                    alertify.dismissAll();
+                    encouragingQuotes = [
+                        'So Close!',
+                        'Almost got it!',
+                        "You will get this next time!"
+                    ]
+
+                    alertify.alert("Game End", `${this.game.data[info].Username} Won! ${encouragingQuotes[Math.floor(Math.random() * encouragingQuotes.length)]}`);
+                    this.leave();
+                }
             });
 
             this.socket.on("dice-roll", (info) => {
@@ -347,9 +416,9 @@ export default {
                     this.game.data[result["User"]] = {...this.game.data[result["User"]], Pos: Number(result["Pos"])}
                     this.rerender();
                 }
-                if(result["User"] == this.user_id){
-                    this.addNoti(result["Info"], "info")
-                }
+
+                this.addNoti(result["Info"], "info")
+                
             })
 
             this.socket.on("jail", (info) => {
@@ -369,6 +438,7 @@ export default {
                 this.game.data[info] = {...this.game.data[info], Jail: false}
                 if(info == this.user_id)  this.$forceUpdate();
             });
+
 
             this.socket.on("payment", (info) => {
                 console.log(`Payment ${info}`)
@@ -433,11 +503,15 @@ export default {
 
 
     },
+    beforeDestroy(){
+        this.leave();
+    },
     methods:{
         leave(){
             if(this.connected){
                 this.socket.emit('leave-game', JSON.stringify({"game_id": this.game_id,"user_id": this.user_id}))
             }
+            this.alanBtnInstance.remove();
             this.socket.destroy();
             this.$router.push("/app/")
         },
@@ -457,7 +531,7 @@ export default {
             }
         },
         payOutOfJail(){
-            if(this.game.turn == this.user_id){
+            if(this.game.turn == this.user_id && this.isInJail()){
                 this.socket.emit("pay-out-jail", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
             }
         },
@@ -470,10 +544,14 @@ export default {
             }   
         },
         finishTurn(){
-            this.socket.emit('end-turn', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+            if(this.game.turn == this.user_id && this.game.hasRolled){
+                this.socket.emit('end-turn', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+            } else {
+                this.addNoti("You must roll the die first!", "danger")
+            }
         },
         rollDice(){
-            if(!this.game.hasRolled){
+            if(!this.game.hasRolled && this.game.turn == this.user_id){
                 this.socket.emit('roll-dice', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
             }
         },
@@ -539,6 +617,14 @@ export default {
             console.log(`Couldnt find card ${prop.Name}`)
             return null;
         },
+        getPropertyByName(name){
+            let posistions = Object.keys(board);
+            for(let i = 0; i < posistions.length; i++){
+                if(board[posistions[i]].name == name) return board[posistions[i]]
+            }
+            console.log(`Couldnt find card ${prop.Name}`)
+            return null;
+        },
         calculateRent(pos, houses){
             if(houses && houses > 0) return board[pos.toString()].multiplied_rent[houses - 1];
             else return board[pos.toString()].rent 
@@ -558,14 +644,14 @@ export default {
         range(size, startAt = 0) {
                 return [...Array(size).keys()].map(i => i + startAt);
         },
-        drawImageOnCell(x, y, path){ // draws image on cell below text
+        drawImageOnCell(x, y, path, scaleX = 1, scaleY = 1){ // draws image on cell below text
             var image = new Image();
             image.src = require(`~/assets/${path}`)
             image.addEventListener('load', () => {
                 let imgWidth = (this.canvas.w / 11) / 1.5;
                 let imgHeight = (this.canvas.h / 11) / 1.5;
                 //this.canvas.board.drawImage(image, x + (imgWidth / 3), y + (this.canvas.h / 11) / 3, imgWidth, imgHeight)
-                this.canvas.board.drawImage(image, x + (((this.canvas.w / 11) - imgWidth) / 2), y + (this.canvas.h / 11) / 3, imgWidth, imgHeight)
+                this.canvas.board.drawImage(image, x + (((this.canvas.w / 11) - imgWidth) / 2) * scaleX, y + (this.canvas.h / 11) / 3 * scaleY, imgWidth, imgHeight)
             }, false)
            
         },
@@ -579,18 +665,59 @@ export default {
             }, false)
         },
         getHouses(property){
-            if(!(property.Type == "special" || property.Group == "railroad" || property.Group == "utility")){
+            if(property){
+                if(!(property.Type == "special" || property.Group == "railroad" || property.Group == "utility")){
+                    let users = Object.keys(this.game.data)
+                    for(let i = 0; i < users.length; i++){
+                        for(let j = 0; j < this.game.data[users[i]].Properties.length; j++){
+                            if(this.game.data[users[i]].Properties[j].Name == property.name){
+                                return this.game.data[users[i]].Properties[j].Houses
+                            }
+                        }
+                    }
+                    return 0;
+                }else return 0;
+            } else {
+                return -1;
+            }
+        },
+        whoOwns(property){
+            if(property && property.type != "special"){
                 let users = Object.keys(this.game.data)
-                for(let i = 0; i < users.length; i++){
+                for(let i = 0 ;i < users.length; i++){
                     for(let j = 0; j < this.game.data[users[i]].Properties.length; j++){
-                        if(this.game.data[users[i]].Properties[j].Name == property.name){
-                            return this.game.data[users[i]].Properties[j].Houses
+                        if(this.game.data[users[i]].Properties[j].name == property.name){
+                            return users[i]
                         }
                     }
                 }
-                return 0;
-            }else return 0;
+                return ""
+            }else return ""
+        },
+        findAll(name){
+            let props = []
 
+            if(name){
+                let positions = Object.keys(board);
+                for(let i = 0;i < positions.length; i++){
+                    if(board[positions[i]].name.toLowerCase() == name.toLowerCase()) props.push(board[positions[i]])
+                }
+            }  
+
+            return props 
+        },
+        findClosest(name){
+            let props = this.findAll(name);
+            if(props.length == 0) return null;
+            let min = Infinity;
+
+            props.forEach((prop) => {
+                if(Math.abs(prop.posistion - this.game.data[this.user_id].Pos) < min){
+                    min = Math.abs(prop.posistion - this.game.data[this.user_id].Pos)
+                }
+            });
+
+            return min;
         },
         drawCell(x, y, card, users, direction){
                 let ctx = this.canvas.board;
@@ -612,9 +739,6 @@ export default {
                 let houses = this.getHouses(card);
 
                 let drawHouses = () => {
-                    
-                    console.log(`Here3 ${houses}`)
-                    if(houses > 0) console.log(`Here2 ${houses}`)
                     ctx.beginPath();
                     for(let i = 0;i < houses; i++){
                         ctx.fillStyle = "#208B2D";
@@ -655,8 +779,6 @@ export default {
                 }
 
                 
-
-
                 if(card.posistion == 0){
                     // handle GO
                     this.drawImage(x, y, 'go.png', 1, drawUsers);
@@ -706,7 +828,7 @@ export default {
                             this.drawImageOnCell(x, y, 'railroad.png')
                     }else if(card.posistion == 12){
                         // handle electric company
-                        this.drawImageOnCell(x, y, 'electric-company.png')
+                        this.drawImageOnCell(x, y, 'electric-company.png', 0.8)
                     }else if(card.posistion == 28){
                         // handle water works
                         this.drawImageOnCell(x, y, 'water-works.png')
@@ -755,6 +877,10 @@ export default {
         rerender(){
             this.resize();
         },
+        prepareText(text){
+            const regex = /\s/ig
+            return text.replaceAll(regex, "")
+        }
 
     },
     directives: {
@@ -831,7 +957,7 @@ export default {
   padding: 6px 12px;
   border: 1px solid #ccc;
   border-top: none;
-  min-height: 100px;
+  height: 200px;
 }
 
 table {
@@ -849,4 +975,26 @@ tr:nth-child(even) {
   background-color: #dddddd;
 }
 
+.circle{
+  height: 2rem;
+  width: 2rem;
+  border-radius: 50%;
+}
+
+.border-1{
+    border-width: 1px;
+}
+.button{
+    border: 1px solid black;
+    margin-top: 0.2rem;
+    margin-bottom: 0.2rem;
+    padding: 0.25rem;
+    box-shadow: 1px 2px;
+}
+
+.part-border{
+    border: 2px solid red;
+    border-top: none;
+    border-right: none;
+}
 </style>

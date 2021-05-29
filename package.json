@@ -17,6 +17,7 @@
     "@nuxtjs/axios": "^5.13.1",
     "@nuxtjs/pwa": "^3.3.5",
     "core-js": "^3.8.3",
+    "fs": "^0.0.1-security",
     "nuxt": "^2.14.12",
     "socket.io-client": "1.4"
   },
