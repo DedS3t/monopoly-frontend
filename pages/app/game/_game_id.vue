@@ -27,35 +27,35 @@
 
             <!-- Game Data -->
             <div v-if="activeTab == 0" class="tabcontent">
-                <h1 class="float-right text-green-700 font-bold text-xl part-border p-1">${{ currentBalance() }}</h1>
-                <div class="float-left">
-                    <h1 class="text-xl">Position: <span class="font-bold">{{ getCard(currentPosition()).name }}</span></h1>
-                    <div v-if="game.turn" class="mt-3">
-                        <h1 class="text-xl">Turn: <span class="font-bold">{{ game.data[game.turn].Username }}</span> <span v-if="game.turn == user_id">(You)</span></h1>
-                        <div v-if="game.turn == user_id">
-                            <div v-if="isInJail()">
-                                <h1 class="text-red-700">You are in jail</h1>
-                                <button @click="payOutOfJail">Pay $50 to get out</button>
-                            </div> 
-                            <div v-if="game.roll">
-                                <i :class="getClass(game.roll['dice1'])" class="inline-block text-6xl"></i>
-                                <i :class="getClass(game.roll['dice2'])" class="inline-block text-6xl ml-2"></i>
-                            </div> 
-                            <button v-if="!game.hasRolled" @click="rollDice" class="button">Roll <i class="fas fa-dice"></i></button>
-                            <p><button v-if="game.hasRolled" @click="finishTurn" class="button">Finish turn</button></p>
-                        </div>
-                        <div v-else>
-                            <h1 class="text-lg text-gray-500 mt-3">Waiting for your turn...</h1>
-                        </div>
+                <h1 class="text-xl">You have: <span class="text-green-700 font-bold ">${{ currentBalance() }}</span></h1>
+        
+                <h1 class="text-xl">Position: <span class="font-bold">{{ getCard(currentPosition()).name }}</span></h1>
+                <div v-if="game.turn" class="">
+                    <h1 class="text-xl">Turn: <span class="font-bold">{{ game.data[game.turn].Username }}</span> <span v-if="game.turn == user_id">(You)</span></h1>
+                    <div v-if="game.turn == user_id">
+                        <div v-if="isInJail()">
+                            <h1 class="text-red-700">You are in jail</h1>
+                            <button @click="payOutOfJail">Pay $50 to get out</button>
+                        </div> 
+                        <div v-if="game.roll">
+                            <i :class="getClass(game.roll['dice1'])" class="inline-block text-6xl"></i>
+                            <i :class="getClass(game.roll['dice2'])" class="inline-block text-6xl ml-2"></i>
+                        </div> 
+                        <button v-if="!game.hasRolled" @click="rollDice" class="button">Roll <i class="fas fa-dice"></i></button>
+                        <p><button v-if="game.hasRolled" @click="finishTurn" class="button">Finish turn</button></p>
+                    </div>
+                    <div v-else>
+                        <h1 class="text-lg text-gray-500 mt-1">Waiting for your turn...</h1>
                     </div>
                 </div>
+                
 
             </div>
 
             <!-- Properties -->
             <div class="tabcontent" v-if="activeTab == 1">
                 <div class="float-left w-1/4">
-                    <button v-for="property in getProperties()" class="w-11/12 m-auto border-1 border-gray-600 p-1" :key="property.Name" @click="activeProperty = getPropertyInfo(property)">
+                    <button v-for="property in getProperties()" class="w-11/12 m-auto border-1 p-1 border-gray-600" :style="'border-color: ' + getPropertyInfo(property).group + '; color: ' + getPropertyInfo(property).group" :key="property.Name" @click="activeProperty = getPropertyInfo(property)">
                         {{ property.Name }}
                     </button> 
                 </div> 
@@ -81,13 +81,13 @@
                         <th>Player</th>
                         <th>Balance</th>
                         <th>Color</th>
-                        <th>Posistion</th>
+                        <th>Position</th>
                     </tr>
                     <tr v-for="player in getPlayers()" :key="player"> <!-- TODO export to components -->
                         <td>{{ game.data[player].Username }} <p v-if="player == user_id"> (You)</p></td>
                         <td>{{ game.data[player].Balance }}</td>
                         <td><div class="circle" :style="'background-color:' + game.data[player].Color"></div></td>
-                        <td>{{ game.data[player].Pos }}</td>
+                        <td>{{ getCard(game.data[player].Pos).name }}</td>
                     </tr> 
                 </table>
             </div>  
@@ -648,10 +648,10 @@ export default {
             var image = new Image();
             image.src = require(`~/assets/${path}`)
             image.addEventListener('load', () => {
-                let imgWidth = (this.canvas.w / 11) / 1.5;
-                let imgHeight = (this.canvas.h / 11) / 1.5;
+                let imgWidth = ((this.canvas.w / 11) / 1.5) * scaleX;
+                let imgHeight = ((this.canvas.h / 11) / 1.5) * scaleY;
                 //this.canvas.board.drawImage(image, x + (imgWidth / 3), y + (this.canvas.h / 11) / 3, imgWidth, imgHeight)
-                this.canvas.board.drawImage(image, x + (((this.canvas.w / 11) - imgWidth) / 2) * scaleX, y + (this.canvas.h / 11) / 3 * scaleY, imgWidth, imgHeight)
+                this.canvas.board.drawImage(image, x + (((this.canvas.w / 11) - imgWidth) / 2), y + (this.canvas.h / 11) / 3, imgWidth, imgHeight)
             }, false)
            
         },
@@ -750,7 +750,7 @@ export default {
                 }
 
                 // draw users
-                let drawUsers = () =>{
+                let drawUsers = () => {
                     for(let i = 0;i < users.length; i++){
                         ctx.beginPath();
                         ctx.fillStyle = users[i].Color;
@@ -784,16 +784,16 @@ export default {
                     this.drawImage(x, y, 'go.png', 1, drawUsers);
                 }else if(card.posistion == 20){
                     // handle free parking
-                    this.drawImage(x, y, 'free-parking.png', 1, drawUsers);
+                    this.drawImage(x, y, 'free-parking2.png', 1, drawUsers);
                 }else if(card.posistion == 30){
                     // handle go to jail
                     this.drawImage(x, y, 'go-to-jail.png', 1,drawUsers);
                 }else if(card.posistion == 38){
                     // handle luxury tax
-                    this.drawImage(x, y, 'luxury-tax.png', 1, drawUsers());
+                    this.drawImage(x, y, 'luxury-tax.png', 1, drawUsers);
                 }else if(card.posistion == 10){
                     // handle jail
-                    this.drawImage(x, y, 'jail.png', 0.75, drawUsers());
+                    this.drawImage(x, y, 'jail.png', 0.75, drawUsers);
                 }else{
                     // draw top rect
                     if(card.group == "yellow"){ctx.fillStyle = "#f2dc49"
@@ -818,7 +818,7 @@ export default {
                     if(card.type == "special"){
                         if(card.action == "chance"){
                             // handle chance card
-                            this.drawImageOnCell(x, y, 'chance.png')
+                            this.drawImageOnCell(x, y, 'chance.png', 1, 0.9)
                         }else if(card.action == "chest"){
                             // handle chest
                             this.drawImageOnCell(x, y, 'chest.png')

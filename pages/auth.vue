@@ -2,7 +2,7 @@
     <div>
         <form class="form" @submit.prevent="submitLogin" v-if="active == 'login'">
             <h1 class="font-bold text-3xl">Login</h1>
-            <input type="email" name="email" v-model="loginForm.email" placeholder="Email" />
+            <input type="text" name="email" v-model="loginForm.email" placeholder="Username" />
             <input type="password" name="pass" v-model="loginForm.pass" placeholder="Password" />
             <div class="w-full">
                 <a @click="active = 'signup'" class="link">Don't have an account? Signup</a>
@@ -11,7 +11,7 @@
         </form>
         <form class="form" @submit.prevent="submitSignup" v-if="active == 'signup'">
             <h1 class="font-bold text-3xl">Signup</h1>
-            <input type="email" name="email" v-model="signupForm.email" placeholder="Email" />
+            <input type="text" name="email" v-model="signupForm.email" placeholder="Username" />
             <input type="password" name="pass" v-model="signupForm.pass" placeholder="Password" />
             <div class="w-full">
                 <a @click="active = 'login'" class="link">Already have an account? Login</a>
