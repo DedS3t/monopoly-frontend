@@ -7,7 +7,8 @@
                 <i v-else class="fas fa-volume-mute text-2xl"></i>
             </button>    
             <div class="center-top text-center">
-                <h1 class="font-bold text-6xl">Code: {{ game_id }}</h1>
+                <h1 class="font-bold text-6xl">Code: <button @click="copyToClipboard(game_id)" class="tooltip"><span class="tooltiptext text-sm">{{ tooltip }}</span>{{ game_id }}</button></h1>
+                <button class="tooltip text-2xl text-blue-400 no-text-dec" @click="copyToClipboard(getLink())"><span class="tooltiptext text-sm">{{ tooltip }}</span>Copy Shareable Link</button>
                 <h1 class="text-5xl">Players: {{ players }}</h1>
                 <div class="mt-5">
                     <button @click="start" class="px-5 text-white py-2 text-xl rounded-lg bg-gradient-to-b border-2 from-green-600 to-green-400 transition delay-100 duration-500 ease-in-out transform hover:-translate-y-1 hover:scale-110">Start</button>
@@ -132,11 +133,14 @@ export default {
             activeTab: 0,
             activeProperty: null,
             openPrompt: null,
+            tooltip: "Copy to Clipboard",
+            waiting: false,
+            rejoin: false,
             game: {
                 started: false,
                 hasRolled: false,
                 roll: null,
-                turn: null,
+                turn: null, 
                 turnInfo: {},
                 data: {},
                 notifications: [],
@@ -191,6 +195,8 @@ export default {
 
         
         this.socket.emit('join-game', JSON.stringify({"game_id": this.game_id, "user_id": user_id}))
+
+
         this.socket.on('joined-game', (message) => {
             console.log(message)
             this.players = parseInt(message)
@@ -199,13 +205,17 @@ export default {
 
         this.socket.on('player-join', () => {
             console.log("Player joined")
+            this.addNoti("Player Joined", "info")
             this.players += 1;
+            this.waiting = false;
         });
 
 
         this.socket.on('player-left', () =>{
             console.log("player left")
+            this.addNoti("Player Left", "info")
             this.players -= 1;
+            this.waiting = false;
         })
         
 
@@ -288,7 +298,7 @@ export default {
             rootEl: document.getElementById("alan-btn"),
         });
 
-        this.socket.on("game-start", (info) => {
+        this.socket.on("game-start", (info) => { // TODO export below to function so rejoins are simple
             let jsonRes = JSON.parse(info)
             console.log(jsonRes)
             this.game.data = jsonRes;
@@ -486,6 +496,12 @@ export default {
                 }                
             })
 
+            this.socket.on("temp-leave", () => {
+                console.log(`Someone has left`)
+                this.waiting = true;
+                this.addNoti("Someone has left the game. They have 1 minute to join before the game goes on", "danger")
+            });
+
             window.addEventListener('resize', this.resize);
             this.canvas.canvas.addEventListener('click', (event) => {
                     const rect = this.canvas.canvas.getBoundingClientRect();
@@ -524,18 +540,27 @@ export default {
             return false;
         },
         async VerifyRoom(){
-            let result = (await this.$axios.get(`http://localhost:3333/game/verify?code=${this.game_id}`, {headers: {'Content-Type': 'application/json'}})).data
-            console.log(result);
+            let result = (await this.$axios.get(`http://localhost:3333/game/verify?code=${this.game_id}&user_id=${this.user_id}`, {headers: {'Content-Type': 'application/json'}})).data
+            if(result["status"] == "rejoin") {
+                this.rejoin = true;
+                return;
+            }
+
             if(result["status"] != true){
                 this.$router.push("/app/")
             }
         },
         payOutOfJail(){
-            if(this.game.turn == this.user_id && this.isInJail()){
+            if(this.game.turn == this.user_id && this.isInJail() && !this.waiting){
                 this.socket.emit("pay-out-jail", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
             }
         },
         start() {
+            if(this.players < 2) {
+                this.addNoti("Must have at least 2 players to start game", "danger");
+                return;
+            }
+
             if(!this.game.started && !this.spamProtection.start){
                 this.socket.emit("start-game", this.game_id);
                 setTimeout(() => {
@@ -544,19 +569,19 @@ export default {
             }   
         },
         finishTurn(){
-            if(this.game.turn == this.user_id && this.game.hasRolled){
+            if(this.game.turn == this.user_id && this.game.hasRolled && !this.waiting){
                 this.socket.emit('end-turn', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
             } else {
                 this.addNoti("You must roll the die first!", "danger")
             }
         },
         rollDice(){
-            if(!this.game.hasRolled && this.game.turn == this.user_id){
+            if(!this.game.hasRolled && this.game.turn == this.user_id && !this.waiting){
                 this.socket.emit('roll-dice', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
             }
         },
         buyHouse(pos){
-            if(this.game.turn == this.user_id){
+            if(this.game.turn == this.user_id && !this.waiting){
                 this.socket.emit('buy-house', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id, "card_pos": String(pos)}))
             }
         },
@@ -605,7 +630,7 @@ export default {
             return `fas fa-dice-${arr[dice - 1]}`
         },
         buyProperty(){
-            if(this.game.turn == this.user_id){
+            if(this.game.turn == this.user_id && !this.waiting){
                  this.socket.emit("request-buy", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
             } 
         },
@@ -880,8 +905,26 @@ export default {
         prepareText(text){
             const regex = /\s/ig
             return text.replaceAll(regex, "")
-        }
+        },
+        copyToClipboard(str) {
+            const el = document.createElement('textarea');
+            el.value = str;
+            el.setAttribute('readonly', '');
+            el.style.position = 'absolute';
+            el.style.left = '-9999px';
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            this.tooltip = "Copied to Clipboard!"
 
+            setTimeout(() => {
+                this.tooltip = "Copy to Clipboard";
+            }, 2000);
+        },
+        getLink() {
+            return `http://localhost:3000/app/game/${this.game_id}?game=${this.game_id}`
+        },
     },
     directives: {
         clickOutside: {
@@ -996,5 +1039,46 @@ tr:nth-child(even) {
     border: 2px solid red;
     border-top: none;
     border-right: none;
+}
+
+.tooltip {
+  position: relative;
+  display: inline-block;
+  border-bottom: 1px dotted black;
+}
+
+.tooltip .tooltiptext {
+  visibility: hidden;
+  width: 150px;
+  background-color: black;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 5px 0;
+  position: absolute;
+  z-index: 1;
+  bottom: 100%;
+  left: 50%;
+  margin-left: -60px;
+}
+
+.tooltip .tooltiptext::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: black transparent transparent transparent;
+}
+
+.tooltip:hover .tooltiptext {
+  visibility: visible;
+}
+
+.no-text-dec {
+    text-decoration: none;
+    border: none;
 }
 </style>

@@ -39,8 +39,10 @@ export default {
     methods: {
         async submitLogin(){
             try{
-                let result = await this.$auth.loginWith('local', { data: this.loginForm });
-                this.$router.push("/app/")
+                await this.$auth.loginWith('local', { data: this.loginForm });
+                
+                if (this.$route.query.game) this.$router.push(`/app/game/${this.$route.query.game}`)
+                else this.$router.push("/app/")
             }catch (error){
                 console.log(error)
                 alertify.alert("Error", "Login Failed").set("movable", false);
@@ -53,8 +55,10 @@ export default {
                     'Content-Type': 'application/json'
                     }
                 });
-                let result = await this.$auth.loginWith('local', { data: this.signupForm });
-                this.$router.push("/app/")
+                await this.$auth.loginWith('local', { data: this.signupForm });
+
+                if (this.$route.query.game) this.$router.push(`/app/game/${this.$route.query.game}`)
+                else this.$router.push("/app/")
 
             }catch (error){
                 console.log(error)
