@@ -187,6 +187,7 @@ export default {
         });
 
         this.socket.on("failed", () => {
+            console.log("FAILED ====");
             this.$router.push("/app/")
         })
         // let user_id = (await this.$axios.get("http://localhost:3333/user/cur")).data
@@ -220,15 +221,14 @@ export default {
         
 
         setTimeout(() => {
-            if(!this.connected){
+            if(!this.connected && !this.rejoin){
                 this.$router.push("/app/")
             }
         }, 5000)
         
 
         // alan ai stuff
-        // have to add reference to this before using because of scope issues
-        //let old = this;
+
         this.alanBtnInstance = alanBtn({
             key: "bfdc8a46d259d388244cfe8a0cbd27662e956eca572e1d8b807a3e2338fdd0dc/stage",
             onCommand: (commandData) => {
@@ -247,16 +247,22 @@ export default {
                 }else if(commandData.command === "view-balance"){
                     this.speakMessage("general", `Your balance is: ${this.game.data[this.user_id].Balance}`, true)
                 }else if(commandData.command === "view-players"){   
+                    // switch to players tab
                     this.activeTab = 2;
                 }else if(commandData.command === "view-game"){
+                    // switch to game tab
                     this.activeTab = 0;
                 }else if(commandData.command === "view-properties"){
+                    // switch to property tab
                     this.activeTab = 1;
                 }else if(commandData.commnad === "view-location"){
+                    // tell location
                     this.speakMessage("general", `You are at ${board[this.game.data[this.user_id].Pos.toString()].name}`, true)
                 }else if(commandData.command === "buy-house"){
+                    // buy house on property
                     this.buyHouse(this.getPropertyByName(commandData.property).posistion);
                 }else if(commandData.command === "info"){
+                    // get various info on properties
                     let type = this.prepareText(commandData.type);
                     let card = commandData.property.trim();
                     let response = "Invalid Property";
@@ -281,31 +287,467 @@ export default {
                     }
 
                     this.speakMessage("general", response, true);
+
                 }else if(commandData.command === "who-owns"){
+                    // who owns a certain card
                     let card = commandData.property.trim();
                     let user = this.whoOwns(this.getPropertyByName(card))
                     
                     if(user == "") this.speakMessage("general","Property doesn't have an owner", true)
                     else this.speakMessage("general", `${this.game.data[user].Username} owns ${commandData.property}`, true)
+
                 }else if(commandData.command === "how-far"){
+                    // how far is the nearest card
                     let card = commandData.property.trim();
                     let closest = this.findClosest(card);
 
                     if(closest && closest != Infinity) this.speakMessage("general", `${card} is ${closest} away`, true)
                     else this.speakMessage("general", "Unable to find property", true)
+
                 }
             },
             rootEl: document.getElementById("alan-btn"),
         });
 
-        this.socket.on("game-start", (info) => { // TODO export below to function so rejoins are simple
+        this.socket.on('rejoined', (info) => {
+            console.log(`REJOINING WITH ${info}`);
+            let jsonRes = JSON.parse(info)
+            this.game.data = jsonRes["data"];
+            this.game.turn = jsonRes["turn"];
+            this.game.started = true;
+
+            this.loadGameStart()
+        });
+
+        this.socket.on("game-start", (info) => { 
             let jsonRes = JSON.parse(info)
             console.log(jsonRes)
             this.game.data = jsonRes;
             this.game.started = true;
             this.players = Object.keys(jsonRes).length
             console.log("Game starting");
-            this.socket.on("change-turn", (user_id) => {
+           
+            this.loadGameStart()
+        });
+        
+    },
+    beforeDestroy(){
+        this.leave();
+    },
+    methods:{
+        leave(){
+            if(this.connected){
+                this.socket.emit('leave-game', JSON.stringify({"game_id": this.game_id,"user_id": this.user_id}))
+            }
+            this.alanBtnInstance.remove();
+            this.socket.destroy();
+            console.log("LEAVING ===");
+            this.$router.push("/app/")
+        },
+        isInCircle(a, b, x, y, r){
+            var dist_points = (a - x) * (a - x) + (b - y) * (b - y);
+            r *= r;
+            if (dist_points < r) {
+                return true;
+            }
+            return false;
+        },
+        async VerifyRoom(){
+            this.user_id = this.$auth.user;
+            let result = (await this.$axios.get(`http://localhost:3333/game/verify?code=${this.game_id}&user_id=${this.user_id}`, {headers: {'Content-Type': 'application/json'}})).data
+            console.log(result);
+            if(result["status"] == "rejoin") {
+                this.rejoin = true;
+                return;
+            }
+
+            if(result["status"] != true){
+                console.log("Coudlnt verify room");
+                this.$router.push("/app/")
+            }
+        },
+        payOutOfJail(){
+            if(this.game.turn == this.user_id && this.isInJail() && !this.waiting){
+                this.socket.emit("pay-out-jail", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+            }
+        },
+        start() {
+            if(this.players < 2) {
+                this.addNoti("Must have at least 2 players to start game", "danger");
+                return;
+            }
+
+            if(!this.game.started && !this.spamProtection.start){
+                this.socket.emit("start-game", this.game_id);
+                setTimeout(() => {
+                    this.spamProtection.start = true;
+                }, 1000)
+            }   
+        },
+        finishTurn(){
+            if(this.game.turn == this.user_id && this.game.hasRolled && !this.waiting){
+                this.socket.emit('end-turn', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+            } else {
+                this.addNoti("You must roll the die first!", "danger")
+            }
+        },
+        rollDice(){
+            if(!this.game.hasRolled && this.game.turn == this.user_id && !this.waiting){
+                this.socket.emit('roll-dice', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+            }
+        },
+        buyHouse(pos){
+            if(this.game.turn == this.user_id && !this.waiting){
+                this.socket.emit('buy-house', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id, "card_pos": String(pos)}))
+            }
+        },
+        currentPosition(){
+            return this.game.data[this.user_id].Pos 
+        },
+        currentBalance(){
+            return this.game.data[this.user_id].Balance
+        },
+        isInJail(){
+            return this.game.data[this.user_id].Jail
+        },
+        addNoti(text, type){
+            if(type == "danger" || type == "error"){
+                alertify.error(text);
+            }else if(type == "success"){
+                alertify.success(text)
+            }else if(type == "info"){
+                alertify.notify(text, 'custom')
+            }else if(type == "warning"){
+                alertify.warning(text);
+            }
+        },
+        getUsers(idx){
+            if(idx >= 40){
+                idx -= 40;
+            }
+            let users = []
+            let ids = Object.keys(this.game.data)
+            for(let i = 0; i < ids.length; i++){
+                if(this.game.data[ids[i]].Pos == idx)users.push(this.game.data[ids[i]]);
+            }
+            return users
+        },
+        getPlayers(){
+            return Object.keys(this.game.data)
+        },
+        getCard(idx){
+            if(idx >= 40){
+                idx -= 40;
+            }
+            return board[idx.toString()]
+        },
+        getClass(dice){
+            let arr = ["one", "two", "three", "four", "five", "six"]
+            return `fas fa-dice-${arr[dice - 1]}`
+        },
+        buyProperty(){
+            if(this.game.turn == this.user_id && !this.waiting){
+                 this.socket.emit("request-buy", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
+            } 
+        },
+        getPropertyInfo(prop){
+            let posistions = Object.keys(board);
+            for(let i = 0; i < posistions.length; i++){
+                if(board[posistions[i]].name == prop.Name) return {...board[posistions[i]], houses: prop.Houses};
+            }
+            console.log(`Couldnt find card ${prop.Name}`)
+            return null;
+        },
+        getPropertyByName(name){
+            let posistions = Object.keys(board);
+            for(let i = 0; i < posistions.length; i++){
+                if(board[posistions[i]].name == name) return board[posistions[i]]
+            }
+            console.log(`Couldnt find card ${prop.Name}`)
+            return null;
+        },
+        calculateRent(pos, houses){
+            if(houses && houses > 0) return board[pos.toString()].multiplied_rent[houses - 1];
+            else return board[pos.toString()].rent 
+        },
+        getProperties(){
+            return this.game.data[this.user_id]["Properties"]
+        },
+        speakMessage(name, data, override = false){
+            if(this.speak || override){
+                this.alanBtnInstance.callProjectApi(name, {data}, (err, result) => {
+                    if(error){
+                        console.log(error);
+                    }
+                })
+            }
+        },
+        range(size, startAt = 0) {
+                return [...Array(size).keys()].map(i => i + startAt);
+        },
+        drawImageOnCell(x, y, path, scaleX = 1, scaleY = 1){ // draws image on cell below text
+            var image = new Image();
+            image.src = require(`~/assets/${path}`)
+            image.addEventListener('load', () => {
+                let imgWidth = ((this.canvas.w / 11) / 1.5) * scaleX;
+                let imgHeight = ((this.canvas.h / 11) / 1.5) * scaleY;
+                //this.canvas.board.drawImage(image, x + (imgWidth / 3), y + (this.canvas.h / 11) / 3, imgWidth, imgHeight)
+                this.canvas.board.drawImage(image, x + (((this.canvas.w / 11) - imgWidth) / 2), y + (this.canvas.h / 11) / 3, imgWidth, imgHeight)
+            }, false)
+           
+        },
+        drawImage(x, y, path, size, callback){ // draws image to take up whole cell
+            var image = new Image();
+            image.src = require(`~/assets/${path}`)
+            image.addEventListener('load', () => {
+                this.canvas.board.drawImage(image, x, y, (this.canvas.w / 11) * size, (this.canvas.h / 11) * size)
+                if(callback !== undefined) callback();
+                
+            }, false)
+        },
+        getHouses(property){
+            if(property){
+                if(!(property.Type == "special" || property.Group == "railroad" || property.Group == "utility")){
+                    let users = Object.keys(this.game.data)
+                    for(let i = 0; i < users.length; i++){
+                        for(let j = 0; j < this.game.data[users[i]].Properties.length; j++){
+                            if(this.game.data[users[i]].Properties[j].Name == property.name){
+                                return this.game.data[users[i]].Properties[j].Houses
+                            }
+                        }
+                    }
+                    return 0;
+                }else return 0;
+            } else {
+                return -1;
+            }
+        },
+        whoOwns(property){
+            if(property && property.type != "special"){
+                let users = Object.keys(this.game.data)
+                for(let i = 0 ;i < users.length; i++){
+                    for(let j = 0; j < this.game.data[users[i]].Properties.length; j++){
+                        if(this.game.data[users[i]].Properties[j].name == property.name){
+                            return users[i]
+                        }
+                    }
+                }
+                return ""
+            }else return ""
+        },
+        findAll(name){
+            let props = []
+
+            if(name){
+                let positions = Object.keys(board);
+                for(let i = 0;i < positions.length; i++){
+                    if(board[positions[i]].name.toLowerCase() == name.toLowerCase()) props.push(board[positions[i]])
+                }
+            }  
+
+            return props 
+        },
+        findClosest(name){
+            // find closest property
+            let props = this.findAll(name);
+            if(props.length == 0) return null;
+            let min = Infinity;
+
+            props.forEach((prop) => {
+                if(Math.abs(prop.posistion - this.game.data[this.user_id].Pos) < min){
+                    min = Math.abs(prop.posistion - this.game.data[this.user_id].Pos)
+                }
+            });
+
+            return min;
+        },
+        drawCell(x, y, card, users, direction){
+                let ctx = this.canvas.board;
+                let w = this.canvas.w;
+                let h = this.canvas.h;
+                
+                ctx.font = "15px Ariel";
+                ctx.textAlign = "center";
+                // draw cell
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x, y + (h / 11))
+                ctx.lineTo(x + (w / 11),y + (h / 11));
+                ctx.lineTo(x + (w / 11),y + 0);
+                ctx.lineTo(x, y)
+                ctx.closePath();
+                ctx.stroke();
+
+                let houses = this.getHouses(card);
+
+                let drawHouses = () => {
+                    ctx.beginPath();
+                    for(let i = 0;i < houses; i++){
+                        ctx.fillStyle = "#208B2D";
+                        ctx.fillRect(x + (((w / 11) / 10) * i) + (4 * i), y + (h / 11) / 1.25, (w / 11) / 10, (w / 11) / 10)
+                    }
+                    ctx.fillStyle = "#000000"
+                    ctx.closePath();
+                    ctx.stroke();
+                }
+
+                // draw users
+                let drawUsers = () => {
+                    for(let i = 0;i < users.length; i++){
+                        ctx.beginPath();
+                        ctx.fillStyle = users[i].Color;
+                        let aspect = users.length > 4 ? users.length : (w / 11) / 4;
+                        // depending on direction draw circle as players icon on respective location on property
+                        switch(direction){
+                            case directions.BOTTOM:
+                                ctx.arc(x + (aspect * i) + (aspect / 2), y + (h / 11) + (aspect / 2) , (aspect / 2), 0, Math.PI * 2)
+                                this.canvas.users.push({x: x + (aspect * i) + (aspect / 2),y: y + (h / 11) + (aspect / 2), r: (aspect / 2), user: users[i]})
+                                break;
+                            case directions.LEFT:
+                                ctx.arc(x - (aspect / 2), y + (aspect * i) + (aspect / 2), (aspect / 2), 0, Math.PI * 2)
+                                this.canvas.users.push({x: x - (aspect / 2),y: y + (aspect * i) + (aspect / 2), r: (aspect / 2), user: users[i]})
+                                break;
+                            case directions.TOP:
+                                ctx.arc(x + (aspect * i) + (aspect / 2), y - (aspect / 2), (aspect / 2), 0, Math.PI * 2)
+                                this.canvas.users.push({x: x + (aspect * i) + (aspect / 2), y: y - (aspect / 2), r: (aspect / 2), user: users[i]})
+                                break;
+                            case directions.RIGHT:
+                                ctx.arc(x + (w / 11) + (aspect / 2), y + (aspect * i) + (aspect / 2), (aspect / 2), 0, Math.PI * 2)
+                                this.canvas.users.push({x: x + (w / 11) + (aspect / 2), y: y + (aspect * i) + (aspect / 2), r: (aspect / 2), user: users[i]})
+                                break;
+                        }
+                        ctx.closePath()
+                        ctx.fill()
+                    }
+                }
+
+                
+                if(card.posistion == 0){
+                    // handle GO
+                    this.drawImage(x, y, 'go.png', 1, drawUsers);
+                }else if(card.posistion == 20){
+                    // handle free parking
+                    this.drawImage(x, y, 'free-parking2.png', 1, drawUsers);
+                }else if(card.posistion == 30){
+                    // handle go to jail
+                    this.drawImage(x, y, 'go-to-jail.png', 1,drawUsers);
+                }else if(card.posistion == 38){
+                    // handle luxury tax
+                    this.drawImage(x, y, 'luxury-tax.png', 1, drawUsers);
+                }else if(card.posistion == 10){
+                    // handle jail
+                    this.drawImage(x, y, 'jail.png', 0.75, drawUsers);
+                }else{
+                    // draw top rect
+                    if(card.group == "yellow"){ctx.fillStyle = "#f2dc49"
+                    }else if(card.group == "blue"){ctx.fillStyle = "#001aff"
+                    }else if(card.group == "red"){ctx.fillStyle = "#ff0000"
+                    }else if(card.group == "orange"){ctx.fillStyle = "#ffa200"
+                    }else if(card.group == "purple"){ctx.fillStyle = "#6200c4"
+                    }else if(card.group == "lightblue"){ctx.fillStyle = "#3bc9f5"
+                    }else if(card.group == "green"){ctx.fillStyle = "#396e0d"
+                    }else if(card.group == "brown"){ctx.fillStyle = "#6e3e0d"}
+                    if(card.type == "property" && (card.group != "railroad" && card.group != "utility")){ctx.fillRect(x, y, (w / 11), (h / 11) / 6)}
+                    ctx.fillStyle = "#000000"
+                    // draw name
+                    ctx.fillText(card.name, x + (w / 11) / 2, y + (h / 11) / 3, (w / 11))
+                    // draw price
+                    if(card.price) {
+                        ctx.textAlign = "start"
+                        ctx.fillText(`$${card.price}`, x + 7, y + (h / 11) / 2, (w / 11) / 2)
+                        ctx.textAlign = "center"
+                    }
+                    // handle special cards
+                    if(card.type == "special"){
+                        if(card.action == "chance"){
+                            // handle chance card
+                            this.drawImageOnCell(x, y, 'chance.png', 1, 0.9)
+                        }else if(card.action == "chest"){
+                            // handle chest
+                            this.drawImageOnCell(x, y, 'chest.png')
+                        }
+                    }else if(card.group == "railroad"){
+                            // handle railroads
+                            this.drawImageOnCell(x, y, 'railroad.png')
+                    }else if(card.posistion == 12){
+                        // handle electric company
+                        this.drawImageOnCell(x, y, 'electric-company.png', 0.8)
+                    }else if(card.posistion == 28){
+                        // handle water works
+                        this.drawImageOnCell(x, y, 'water-works.png')
+                    }else{
+                        drawHouses();
+                    }
+
+                    drawUsers();
+                    
+                }
+
+                ctx.fillStyle = "#000000"
+                ctx.stroke();
+        },
+        drawBoard(){
+                // top row
+                let w = this.canvas.w;
+                let h = this.canvas.h;
+                for(const i of this.range(11)){
+                    this.drawCell((w / 11) * i + this.canvas.startW, 0 + this.canvas.startH, this.getCard(i + 20), this.getUsers(i + 20), directions.TOP)
+                }
+                // bottom row
+                for(const i of this.range(11)){
+                    this.drawCell((w / 11) * i + this.canvas.startW, h - (h / 11) + this.canvas.startH, this.getCard(10 - i), this.getUsers(10 - i), directions.BOTTOM)
+                }
+                // left row
+                for(const i of this.range(9)){
+                    this.drawCell(0 + this.canvas.startW, (h / 11) * (i + 1) + this.canvas.startH, this.getCard(19 - i), this.getUsers(19 - i), directions.LEFT)
+                }
+                // right row
+                for(const i of this.range(9)){
+                    this.drawCell(w - (w / 11) + this.canvas.startW, (h / 11) * (i + 1) + + this.canvas.startH, this.getCard(i + 31), this.getUsers(i + 31), directions.RIGHT)
+                }
+
+        },
+        resize(){
+                this.canvas.canvas.height = window.innerHeight * (this.canvas.size / 100);
+                this.canvas.canvas.width = window.innerWidth * (this.canvas.size / 100);
+                this.canvas.w = this.canvas.canvas.width * (11 / 13);
+                this.canvas.h = this.canvas.canvas.height * (11 / 13);
+                this.canvas.startW = (this.canvas.canvas.width / 13)
+                this.canvas.startH = (this.canvas.canvas.height / 13);
+                this.canvas.users = [];
+                this.drawBoard();
+        },
+        rerender(){ 
+            // may add more to rerendering
+            this.resize();
+        },
+        prepareText(text){
+            const regex = /\s/ig
+            return text.replaceAll(regex, "")
+        },
+        copyToClipboard(str) {
+            // create textarea with text not visible to user then copy & remove
+
+            const el = document.createElement('textarea');
+            el.value = str;
+            el.setAttribute('readonly', '');
+            el.style.position = 'absolute';
+            el.style.left = '-9999px';
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            this.tooltip = "Copied to Clipboard!"
+
+            setTimeout(() => {
+                this.tooltip = "Copy to Clipboard";
+            }, 2000);
+        },
+        getLink() {
+            return `http://localhost:3000/app/game/${this.game_id}?game=${this.game_id}`
+        },
+        loadGameStart() {
+             this.socket.on("change-turn", (user_id) => {
                 console.log(`Turn of ${user_id}`)
                 this.game.turn = user_id;
                 this.game.hasRolled = false;
@@ -514,419 +956,11 @@ export default {
                     })
             });
             this.resize();
-        });
-        
-
-
-    },
-    beforeDestroy(){
-        this.leave();
-    },
-    methods:{
-        leave(){
-            if(this.connected){
-                this.socket.emit('leave-game', JSON.stringify({"game_id": this.game_id,"user_id": this.user_id}))
-            }
-            this.alanBtnInstance.remove();
-            this.socket.destroy();
-            this.$router.push("/app/")
-        },
-        isInCircle(a, b, x, y, r){
-            var dist_points = (a - x) * (a - x) + (b - y) * (b - y);
-            r *= r;
-            if (dist_points < r) {
-                return true;
-            }
-            return false;
-        },
-        async VerifyRoom(){
-            let result = (await this.$axios.get(`http://localhost:3333/game/verify?code=${this.game_id}&user_id=${this.user_id}`, {headers: {'Content-Type': 'application/json'}})).data
-            if(result["status"] == "rejoin") {
-                this.rejoin = true;
-                return;
-            }
-
-            if(result["status"] != true){
-                this.$router.push("/app/")
-            }
-        },
-        payOutOfJail(){
-            if(this.game.turn == this.user_id && this.isInJail() && !this.waiting){
-                this.socket.emit("pay-out-jail", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
-            }
-        },
-        start() {
-            if(this.players < 2) {
-                this.addNoti("Must have at least 2 players to start game", "danger");
-                return;
-            }
-
-            if(!this.game.started && !this.spamProtection.start){
-                this.socket.emit("start-game", this.game_id);
-                setTimeout(() => {
-                    this.spamProtection.start = true;
-                }, 1000)
-            }   
-        },
-        finishTurn(){
-            if(this.game.turn == this.user_id && this.game.hasRolled && !this.waiting){
-                this.socket.emit('end-turn', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
-            } else {
-                this.addNoti("You must roll the die first!", "danger")
-            }
-        },
-        rollDice(){
-            if(!this.game.hasRolled && this.game.turn == this.user_id && !this.waiting){
-                this.socket.emit('roll-dice', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
-            }
-        },
-        buyHouse(pos){
-            if(this.game.turn == this.user_id && !this.waiting){
-                this.socket.emit('buy-house', JSON.stringify({"game_id": this.game_id, "user_id": this.user_id, "card_pos": String(pos)}))
-            }
-        },
-        currentPosition(){
-            return this.game.data[this.user_id].Pos 
-        },
-        currentBalance(){
-            return this.game.data[this.user_id].Balance
-        },
-        isInJail(){
-            return this.game.data[this.user_id].Jail
-        },
-        addNoti(text, type){
-            if(type == "danger" || type == "error"){
-                alertify.error(text);
-            }else if(type == "success"){
-                alertify.success(text)
-            }else if(type == "info"){
-                alertify.notify(text, 'custom')
-            }else if(type == "warning"){
-                alertify.warning(text);
-            }
-        },
-        getUsers(idx){
-            if(idx >= 40){
-                idx -= 40;
-            }
-            let users = []
-            let ids = Object.keys(this.game.data)
-            for(let i = 0; i < ids.length; i++){
-                if(this.game.data[ids[i]].Pos == idx)users.push(this.game.data[ids[i]]);
-            }
-            return users
-        },
-        getPlayers(){
-            return Object.keys(this.game.data)
-        },
-        getCard(idx){
-            if(idx >= 40){
-                idx -= 40;
-            }
-            return board[idx.toString()]
-        },
-        getClass(dice){
-            let arr = ["one", "two", "three", "four", "five", "six"]
-            return `fas fa-dice-${arr[dice - 1]}`
-        },
-        buyProperty(){
-            if(this.game.turn == this.user_id && !this.waiting){
-                 this.socket.emit("request-buy", JSON.stringify({"game_id": this.game_id, "user_id": this.user_id}))
-            } 
-        },
-        getPropertyInfo(prop){
-            let posistions = Object.keys(board);
-            for(let i = 0; i < posistions.length; i++){
-                if(board[posistions[i]].name == prop.Name) return {...board[posistions[i]], houses: prop.Houses};
-            }
-            console.log(`Couldnt find card ${prop.Name}`)
-            return null;
-        },
-        getPropertyByName(name){
-            let posistions = Object.keys(board);
-            for(let i = 0; i < posistions.length; i++){
-                if(board[posistions[i]].name == name) return board[posistions[i]]
-            }
-            console.log(`Couldnt find card ${prop.Name}`)
-            return null;
-        },
-        calculateRent(pos, houses){
-            if(houses && houses > 0) return board[pos.toString()].multiplied_rent[houses - 1];
-            else return board[pos.toString()].rent 
-        },
-        getProperties(){
-            return this.game.data[this.user_id]["Properties"]
-        },
-        speakMessage(name, data, override = false){
-            if(this.speak || override){
-                this.alanBtnInstance.callProjectApi(name, {data}, (err, result) => {
-                    if(error){
-                        console.log(error);
-                    }
-                })
-            }
-        },
-        range(size, startAt = 0) {
-                return [...Array(size).keys()].map(i => i + startAt);
-        },
-        drawImageOnCell(x, y, path, scaleX = 1, scaleY = 1){ // draws image on cell below text
-            var image = new Image();
-            image.src = require(`~/assets/${path}`)
-            image.addEventListener('load', () => {
-                let imgWidth = ((this.canvas.w / 11) / 1.5) * scaleX;
-                let imgHeight = ((this.canvas.h / 11) / 1.5) * scaleY;
-                //this.canvas.board.drawImage(image, x + (imgWidth / 3), y + (this.canvas.h / 11) / 3, imgWidth, imgHeight)
-                this.canvas.board.drawImage(image, x + (((this.canvas.w / 11) - imgWidth) / 2), y + (this.canvas.h / 11) / 3, imgWidth, imgHeight)
-            }, false)
-           
-        },
-        drawImage(x, y, path, size, callback){ // draws image to take up whole cell
-            var image = new Image();
-            image.src = require(`~/assets/${path}`)
-            image.addEventListener('load', () => {
-                this.canvas.board.drawImage(image, x, y, (this.canvas.w / 11) * size, (this.canvas.h / 11) * size)
-                if(callback !== undefined) callback();
-                
-            }, false)
-        },
-        getHouses(property){
-            if(property){
-                if(!(property.Type == "special" || property.Group == "railroad" || property.Group == "utility")){
-                    let users = Object.keys(this.game.data)
-                    for(let i = 0; i < users.length; i++){
-                        for(let j = 0; j < this.game.data[users[i]].Properties.length; j++){
-                            if(this.game.data[users[i]].Properties[j].Name == property.name){
-                                return this.game.data[users[i]].Properties[j].Houses
-                            }
-                        }
-                    }
-                    return 0;
-                }else return 0;
-            } else {
-                return -1;
-            }
-        },
-        whoOwns(property){
-            if(property && property.type != "special"){
-                let users = Object.keys(this.game.data)
-                for(let i = 0 ;i < users.length; i++){
-                    for(let j = 0; j < this.game.data[users[i]].Properties.length; j++){
-                        if(this.game.data[users[i]].Properties[j].name == property.name){
-                            return users[i]
-                        }
-                    }
-                }
-                return ""
-            }else return ""
-        },
-        findAll(name){
-            let props = []
-
-            if(name){
-                let positions = Object.keys(board);
-                for(let i = 0;i < positions.length; i++){
-                    if(board[positions[i]].name.toLowerCase() == name.toLowerCase()) props.push(board[positions[i]])
-                }
-            }  
-
-            return props 
-        },
-        findClosest(name){
-            let props = this.findAll(name);
-            if(props.length == 0) return null;
-            let min = Infinity;
-
-            props.forEach((prop) => {
-                if(Math.abs(prop.posistion - this.game.data[this.user_id].Pos) < min){
-                    min = Math.abs(prop.posistion - this.game.data[this.user_id].Pos)
-                }
-            });
-
-            return min;
-        },
-        drawCell(x, y, card, users, direction){
-                let ctx = this.canvas.board;
-                let w = this.canvas.w;
-                let h = this.canvas.h;
-                
-                ctx.font = "15px Ariel";
-                ctx.textAlign = "center";
-                // draw cell
-                ctx.beginPath();
-                ctx.moveTo(x, y);
-                ctx.lineTo(x, y + (h / 11))
-                ctx.lineTo(x + (w / 11),y + (h / 11));
-                ctx.lineTo(x + (w / 11),y + 0);
-                ctx.lineTo(x, y)
-                ctx.closePath();
-                ctx.stroke();
-
-                let houses = this.getHouses(card);
-
-                let drawHouses = () => {
-                    ctx.beginPath();
-                    for(let i = 0;i < houses; i++){
-                        ctx.fillStyle = "#208B2D";
-                        ctx.fillRect(x + (((w / 11) / 10) * i) + (4 * i), y + (h / 11) / 1.25, (w / 11) / 10, (w / 11) / 10)
-                    }
-                    ctx.fillStyle = "#000000"
-                    ctx.closePath();
-                    ctx.stroke();
-                }
-
-                // draw users
-                let drawUsers = () => {
-                    for(let i = 0;i < users.length; i++){
-                        ctx.beginPath();
-                        ctx.fillStyle = users[i].Color;
-                        let aspect = users.length > 4 ? users.length : (w / 11) / 4;
-                        switch(direction){
-                            case directions.BOTTOM:
-                                ctx.arc(x + (aspect * i) + (aspect / 2), y + (h / 11) + (aspect / 2) , (aspect / 2), 0, Math.PI * 2)
-                                this.canvas.users.push({x: x + (aspect * i) + (aspect / 2),y: y + (h / 11) + (aspect / 2), r: (aspect / 2), user: users[i]})
-                                break;
-                            case directions.LEFT:
-                                ctx.arc(x - (aspect / 2), y + (aspect * i) + (aspect / 2), (aspect / 2), 0, Math.PI * 2)
-                                this.canvas.users.push({x: x - (aspect / 2),y: y + (aspect * i) + (aspect / 2), r: (aspect / 2), user: users[i]})
-                                break;
-                            case directions.TOP:
-                                ctx.arc(x + (aspect * i) + (aspect / 2), y - (aspect / 2), (aspect / 2), 0, Math.PI * 2)
-                                this.canvas.users.push({x: x + (aspect * i) + (aspect / 2), y: y - (aspect / 2), r: (aspect / 2), user: users[i]})
-                                break;
-                            case directions.RIGHT:
-                                ctx.arc(x + (w / 11) + (aspect / 2), y + (aspect * i) + (aspect / 2), (aspect / 2), 0, Math.PI * 2)
-                                this.canvas.users.push({x: x + (w / 11) + (aspect / 2), y: y + (aspect * i) + (aspect / 2), r: (aspect / 2), user: users[i]})
-                                break;
-                        }
-                        ctx.closePath()
-                        ctx.fill()
-                    }
-                }
-
-                
-                if(card.posistion == 0){
-                    // handle GO
-                    this.drawImage(x, y, 'go.png', 1, drawUsers);
-                }else if(card.posistion == 20){
-                    // handle free parking
-                    this.drawImage(x, y, 'free-parking2.png', 1, drawUsers);
-                }else if(card.posistion == 30){
-                    // handle go to jail
-                    this.drawImage(x, y, 'go-to-jail.png', 1,drawUsers);
-                }else if(card.posistion == 38){
-                    // handle luxury tax
-                    this.drawImage(x, y, 'luxury-tax.png', 1, drawUsers);
-                }else if(card.posistion == 10){
-                    // handle jail
-                    this.drawImage(x, y, 'jail.png', 0.75, drawUsers);
-                }else{
-                    // draw top rect
-                    if(card.group == "yellow"){ctx.fillStyle = "#f2dc49"
-                    }else if(card.group == "blue"){ctx.fillStyle = "#001aff"
-                    }else if(card.group == "red"){ctx.fillStyle = "#ff0000"
-                    }else if(card.group == "orange"){ctx.fillStyle = "#ffa200"
-                    }else if(card.group == "purple"){ctx.fillStyle = "#6200c4"
-                    }else if(card.group == "lightblue"){ctx.fillStyle = "#3bc9f5"
-                    }else if(card.group == "green"){ctx.fillStyle = "#396e0d"
-                    }else if(card.group == "brown"){ctx.fillStyle = "#6e3e0d"}
-                    if(card.type == "property" && (card.group != "railroad" && card.group != "utility")){ctx.fillRect(x, y, (w / 11), (h / 11) / 6)}
-                    ctx.fillStyle = "#000000"
-                    // draw name
-                    ctx.fillText(card.name, x + (w / 11) / 2, y + (h / 11) / 3, (w / 11))
-                    // draw price
-                    if(card.price) {
-                        ctx.textAlign = "start"
-                        ctx.fillText(`$${card.price}`, x + 7, y + (h / 11) / 2, (w / 11) / 2)
-                        ctx.textAlign = "center"
-                    }
-                    // handle special cards
-                    if(card.type == "special"){
-                        if(card.action == "chance"){
-                            // handle chance card
-                            this.drawImageOnCell(x, y, 'chance.png', 1, 0.9)
-                        }else if(card.action == "chest"){
-                            // handle chest
-                            this.drawImageOnCell(x, y, 'chest.png')
-                        }
-                    }else if(card.group == "railroad"){
-                            // handle railroads
-                            this.drawImageOnCell(x, y, 'railroad.png')
-                    }else if(card.posistion == 12){
-                        // handle electric company
-                        this.drawImageOnCell(x, y, 'electric-company.png', 0.8)
-                    }else if(card.posistion == 28){
-                        // handle water works
-                        this.drawImageOnCell(x, y, 'water-works.png')
-                    }else{
-                        drawHouses();
-                    }
-
-                    drawUsers();
-                    
-                }
-
-                ctx.fillStyle = "#000000"
-                ctx.stroke();
-        },
-        drawBoard(){
-                // top row
-                let w = this.canvas.w;
-                let h = this.canvas.h;
-                for(const i of this.range(11)){
-                    this.drawCell((w / 11) * i + this.canvas.startW, 0 + this.canvas.startH, this.getCard(i + 20), this.getUsers(i + 20), directions.TOP)
-                }
-                // bottom row
-                for(const i of this.range(11)){
-                    this.drawCell((w / 11) * i + this.canvas.startW, h - (h / 11) + this.canvas.startH, this.getCard(10 - i), this.getUsers(10 - i), directions.BOTTOM)
-                }
-                // left row
-                for(const i of this.range(9)){
-                    this.drawCell(0 + this.canvas.startW, (h / 11) * (i + 1) + this.canvas.startH, this.getCard(19 - i), this.getUsers(19 - i), directions.LEFT)
-                }
-                // right row
-                for(const i of this.range(9)){
-                    this.drawCell(w - (w / 11) + this.canvas.startW, (h / 11) * (i + 1) + + this.canvas.startH, this.getCard(i + 31), this.getUsers(i + 31), directions.RIGHT)
-                }
-
-        },
-        resize(){
-                this.canvas.canvas.height = window.innerHeight * (this.canvas.size / 100);
-                this.canvas.canvas.width = window.innerWidth * (this.canvas.size / 100);
-                this.canvas.w = this.canvas.canvas.width * (11 / 13);
-                this.canvas.h = this.canvas.canvas.height * (11 / 13);
-                this.canvas.startW = (this.canvas.canvas.width / 13)
-                this.canvas.startH = (this.canvas.canvas.height / 13);
-                this.canvas.users = [];
-                this.drawBoard();
-        },
-        rerender(){
-            this.resize();
-        },
-        prepareText(text){
-            const regex = /\s/ig
-            return text.replaceAll(regex, "")
-        },
-        copyToClipboard(str) {
-            const el = document.createElement('textarea');
-            el.value = str;
-            el.setAttribute('readonly', '');
-            el.style.position = 'absolute';
-            el.style.left = '-9999px';
-            document.body.appendChild(el);
-            el.select();
-            document.execCommand('copy');
-            document.body.removeChild(el);
-            this.tooltip = "Copied to Clipboard!"
-
-            setTimeout(() => {
-                this.tooltip = "Copy to Clipboard";
-            }, 2000);
-        },
-        getLink() {
-            return `http://localhost:3000/app/game/${this.game_id}?game=${this.game_id}`
-        },
+        }
     },
     directives: {
+        // click outside directive for popups
+
         clickOutside: {
             bind(el, binding, vnode) {
                 var vm = vnode.context;
@@ -944,7 +978,6 @@ export default {
             }
         }
     }
-
 
 
 }
@@ -1081,4 +1114,5 @@ tr:nth-child(even) {
     text-decoration: none;
     border: none;
 }
+
 </style>
