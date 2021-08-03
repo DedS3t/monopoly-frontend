@@ -56,7 +56,7 @@
             <!-- Properties -->
             <div class="tabcontent" v-if="activeTab == 1">
                 <div class="float-left w-1/4">
-                    <button v-for="property in getProperties()" class="w-11/12 m-auto border-1 p-1 border-gray-600" :style="'border-color: ' + getPropertyInfo(property).group + '; color: ' + getPropertyInfo(property).group" :key="property.Name" @click="activeProperty = getPropertyInfo(property)">
+                    <button v-for="property in getProperties()" class="w-11/12 m-auto border-1 p-1 border-gray-600" :style="'border-color: ' + getPropertyInfo(property).group + '; color: ' + getPropertyInfo(property).group" :key="property.Name" @click="activeProperty = getPropertyInfo(property);">
                         {{ property.Name }}
                     </button> 
                 </div> 
@@ -68,7 +68,10 @@
                         <h1>Price: {{ activeProperty.price }}</h1>
                         <h1>Rent: {{ calculateRent(activeProperty.posistion, activeProperty.houses) }}</h1>
                         <h1>Houses: {{ activeProperty.houses }}</h1>
-                        <button class="button">Mortgage (${{ activeProperty.mortgage }})</button>
+
+                        <button class="button" v-if="activeProperty.mortgaged" @click="buyBack">Buy Back (${{ activeProperty.price }})</button>
+                        <button class="button" v-if="!activeProperty.mortgaged" @click="mortgage">Mortgage (${{ activeProperty.mortgage }})</button>
+
                         <button v-if="activeProperty.housecost" class="button" @click="buyHouse(activeProperty.posistion)">Buy House (${{ activeProperty.housecost }})</button>
                     </div> 
                 </div> 
@@ -453,7 +456,7 @@ export default {
         getPropertyInfo(prop){
             let posistions = Object.keys(board);
             for(let i = 0; i < posistions.length; i++){
-                if(board[posistions[i]].name == prop.Name) return {...board[posistions[i]], houses: prop.Houses};
+                if(board[posistions[i]].name == prop.Name) return {...board[posistions[i]], houses: prop.Houses, mortgaged: prop.Mortgaged};
             }
             console.log(`Couldnt find card ${prop.Name}`)
             return null;
@@ -746,6 +749,24 @@ export default {
         getLink() {
             return `http://localhost:3000/app/game/${this.game_id}?game=${this.game_id}`
         },
+        updatePlayerCard(user_id, property) {
+            for(let j = 0; j < this.game.data[users_id].Properties.length; j++){
+                if(this.game.data[user_id].Properties[j].Name == property.name){
+                    this.game.data[user_id].Properties[j] = property;
+                }
+            }
+        },
+        mortgage(){
+            
+            if(this.game.turn == this.user_id && !this.waiting) {
+                this.socket.emit("mortgage", JSON.stringify({user_id: this.user_id, game_id: this.game_id, pos: this.activeProperty.posistion.toString()}))    
+            }
+        },
+        buyBack() {
+            if(this.game.turn == this.user_id && !this.waiting) {
+                this.socket.emit("buy-back", JSON.stringify({user_id: this.user_id, game_id: this.game_id, pos: this.activeProperty.posistion.toString()}))    
+            }
+        },  
         loadGameStart() {
              this.socket.on("change-turn", (user_id) => {
                 console.log(`Turn of ${user_id}`)
@@ -856,6 +877,24 @@ export default {
                     this.$forceUpdate()
                 }
 
+            });
+
+            this.socket.on("mortgage", (info) => {
+                console.log(`Mortgage ${info}`);
+                let data = JSON.parse(info);
+                let property = JSON.parse(data["update"]);
+                this.updatePlayerCard(data["user_id"], property);
+                this.$forceUpdate();
+                this.rerender();
+            });
+
+            this.socket.on("bought-back", (info) => {
+                console.log(`bought-back ${info}`);
+                let data = JSON.parse(info);
+                let property = JSON.parse(data["update"]);
+                this.updatePlayerCard(data["user_id"], property);
+                this.$forceUpdate();
+                this.rerender();
             });
 
             this.socket.on("special", (info) => {
