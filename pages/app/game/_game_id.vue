@@ -56,7 +56,7 @@
             <!-- Properties -->
             <div class="tabcontent" v-if="activeTab == 1">
                 <div class="float-left w-1/4">
-                    <button v-for="property in getProperties()" class="w-11/12 m-auto border-1 p-1 border-gray-600" :style="'border-color: ' + getPropertyInfo(property).group + '; color: ' + getPropertyInfo(property).group" :key="property.Name" @click="activeProperty = getPropertyInfo(property);">
+                    <button v-for="property in getProperties()" class="w-11/12 m-auto border-1 p-1 border-gray-600" :style="'border-color: ' + getPropertyInfo(property).group + '; color: ' + getPropertyInfo(property).group" :key="property.Name" @click="activeProperty = getPropertyInfo(property); print(getPropertyInfo(property))">
                         {{ property.Name }}
                     </button> 
                 </div> 
@@ -564,6 +564,9 @@ export default {
 
             return min;
         },
+        print(obj) {
+            console.log(obj);
+        },
         drawCell(x, y, card, users, direction){
                 let ctx = this.canvas.board;
                 let w = this.canvas.w;
@@ -750,14 +753,13 @@ export default {
             return `http://localhost:3000/app/game/${this.game_id}?game=${this.game_id}`
         },
         updatePlayerCard(user_id, property) {
-            for(let j = 0; j < this.game.data[users_id].Properties.length; j++){
+            for(let j = 0; j < this.game.data[user_id].Properties.length; j++){
                 if(this.game.data[user_id].Properties[j].Name == property.name){
-                    this.game.data[user_id].Properties[j] = property;
+                    this.game.data[user_id].Properties[j] = {Name: property.name, Houses: property.houses, Mortgaged: property.mortgaged};
                 }
             }
         },
         mortgage(){
-            
             if(this.game.turn == this.user_id && !this.waiting) {
                 this.socket.emit("mortgage", JSON.stringify({user_id: this.user_id, game_id: this.game_id, pos: this.activeProperty.posistion.toString()}))    
             }
@@ -847,7 +849,7 @@ export default {
                 let [ user_id, bal, Name ] = info.split(".");
 
                 this.game.data[user_id] = {...this.game.data[user_id], Balance: Number(bal)}
-                this.game.data[user_id]["Properties"] = [...this.game.data[user_id]["Properties"], {Name, Houses: 0}]
+                this.game.data[user_id]["Properties"] = [...this.game.data[user_id]["Properties"], {Name, Houses: 0, Mortgaged: false}]
                 if(user_id == this.user_id){
                     this.addNoti("You have bought the property", "success");
                     this.speakMessage("general", `You have bought the property`)
@@ -883,18 +885,36 @@ export default {
                 console.log(`Mortgage ${info}`);
                 let data = JSON.parse(info);
                 let property = JSON.parse(data["update"]);
+                this.game.data[data["user_id"]] = {...this.game.data[data["user_id"]], Balance: Number(data["balance"])}
                 this.updatePlayerCard(data["user_id"], property);
+                this.activeProperty = null;
                 this.$forceUpdate();
                 this.rerender();
+                if(data["user_id"] == this.user_id) {
+                    this.addNoti(`You have mortgaged ${property.name}`, 'success')
+                    this.speakMessage("general", `You have mortgaged ${property.name}`)
+                } else {
+                    this.addNoti(`${this.game.data[data["user_id"]].Username} mortgaged ${property.name}`, 'info');
+                    this.speakMessage("general", `${this.game.data[data["user_id"]].Username} mortgaged ${property.name}`)
+                }
             });
 
             this.socket.on("bought-back", (info) => {
                 console.log(`bought-back ${info}`);
                 let data = JSON.parse(info);
                 let property = JSON.parse(data["update"]);
+                this.game.data[data["user_id"]] = {...this.game.data[data["user_id"]], Balance: Number(data["balance"])}
                 this.updatePlayerCard(data["user_id"], property);
+                this.activeProperty = null;
                 this.$forceUpdate();
                 this.rerender();
+                if(data["user_id"] == this.user_id) {
+                    this.addNoti(`You have bought back ${property.name}`, 'success')
+                    this.speakMessage("general", `You have bought back ${property.name}`)
+                } else {
+                    this.addNoti(`${this.game.data[data["user_id"]].Username} bought back ${property.name}`, 'info');
+                    this.speakMessage("general", `${this.game.data[data["user_id"]].Username} bought back ${property.name}`)
+                }
             });
 
             this.socket.on("special", (info) => {
