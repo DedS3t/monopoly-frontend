@@ -127,7 +127,7 @@ export default {
     },
     data(){
         return {
-            socket: io('http://127.0.0.1:8000/'),
+            socket: io('https://d1ztc1ie1xi2la.cloudfront.net'),
             game_id: this.game_id,
             players: 0,
             connected: false,
@@ -193,7 +193,7 @@ export default {
             console.log("FAILED ====");
             this.$router.push("/app/")
         })
-        // let user_id = (await this.$axios.get("http://localhost:3333/user/cur")).data
+        // let user_id = (await this.$axios.get("https://d3jenk3g2s9tcm.cloudfront.net/user/cur")).data
         let user_id = this.$auth.user;
         this.user_id = user_id;
 
@@ -357,7 +357,7 @@ export default {
         },
         async VerifyRoom(){
             this.user_id = this.$auth.user;
-            let result = (await this.$axios.get(`http://localhost:3333/game/verify?code=${this.game_id}&user_id=${this.user_id}`, {headers: {'Content-Type': 'application/json'}})).data
+            let result = (await this.$axios.get(`https://d3jenk3g2s9tcm.cloudfront.net/game/verify?code=${this.game_id}&user_id=${this.user_id}`, {headers: {'Content-Type': 'application/json'}})).data
             console.log(result);
             if(result["status"] == "rejoin") {
                 this.rejoin = true;

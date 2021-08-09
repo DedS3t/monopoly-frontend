@@ -51,8 +51,8 @@ export default {
           property: '',
         },
         endpoints: {
-          login: { url: 'http://localhost:3333/user/auth', method: 'post' },
-          user: { url: 'http://localhost:3333/user/cur', method: 'get' },
+          login: { url: 'https://d3jenk3g2s9tcm.cloudfront.net/user/auth', method: 'post' },
+          user: { url: 'https://d3jenk3g2s9tcm.cloudfront.net/user/cur', method: 'get' },
         },
       },
     },

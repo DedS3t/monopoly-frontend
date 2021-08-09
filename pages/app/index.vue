@@ -74,7 +74,7 @@ export default {
         }
     },
     async fetch(){
-        let result = (await this.$axios.get("http://localhost:3333/game/all")).data
+        let result = (await this.$axios.get("https://d3jenk3g2s9tcm.cloudfront.net/game/all")).data
         if(result != null) this.games = result;
     },
     computed: {
@@ -96,7 +96,7 @@ export default {
                         this.spamProtection.createGame = false;
                         return;
                     }
-                    let result = (await this.$axios.post("http://localhost:3333/game/create", this.form, {headers: {'Content-Type': 'application/json'}})).data
+                    let result = (await this.$axios.post("https://d3jenk3g2s9tcm.cloudfront.net/game/create", this.form, {headers: {'Content-Type': 'application/json'}})).data
                     this.spamProtection.createGame = false;
                     this.$router.push(`/app/game/${result["id"]}`)
                 }catch (error){
@@ -109,7 +109,7 @@ export default {
             if(!this.spamProtection.joinGame){
                 this.spamProtection.joinGame = true;
                 try{
-                    let result = (await this.$axios.get(`http://localhost:3333/game/verify?code=${this.joinForm.code}`, {headers: {'Content-Type': 'application/json'}})).data 
+                    let result = (await this.$axios.get(`https://d3jenk3g2s9tcm.cloudfront.net/game/verify?code=${this.joinForm.code}`, {headers: {'Content-Type': 'application/json'}})).data 
                     if(result["status"]){
                         this.spamProtection.joinGame = false;
                         this.$router.push(`/app/game/${this.joinForm.code}`)
@@ -127,7 +127,7 @@ export default {
             if(!this.spamProtection.findGame){
                 this.spamProtection.findGame = true;
                 try{
-                    let result = await this.$axios.get("http://localhost:3333/game/find")
+                    let result = await this.$axios.get("https://d3jenk3g2s9tcm.cloudfront.net/game/find")
                     if (result.status == 204 || result.data.Id == undefined) {
                         alertify.alert("Error", 'No games found').set("movable", false);
                         this.spamProtection.findGame = false;

@@ -50,7 +50,7 @@ export default {
         },
         async submitSignup(){
             try{
-                await this.$axios.post('http://localhost:3333/user/create', this.signupForm, {
+                await this.$axios.post('https://d3jenk3g2s9tcm.cloudfront.net/user/create', this.signupForm, {
                     headers: {
                     'Content-Type': 'application/json'
                     }
