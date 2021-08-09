@@ -750,7 +750,7 @@ export default {
             }, 2000);
         },
         getLink() {
-            return `http://localhost:3000/app/game/${this.game_id}?game=${this.game_id}`
+            return `https://d3jenk3g2s9tcm.cloudfront.net/app/game/${this.game_id}?game=${this.game_id}`
         },
         updatePlayerCard(user_id, property) {
             for(let j = 0; j < this.game.data[user_id].Properties.length; j++){
